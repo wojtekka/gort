@@ -1,0 +1,755 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+import os, sys, socket, signal, string, re, time, select, struct
+
+from SocketServer import ThreadingTCPServer, BaseRequestHandler
+from threading import *
+from ConfigParser import ConfigParser, NoOptionError, NoSectionError
+
+config_path = "gort.conf"
+
+class Rule:
+	"""Stores information about one packet mangling rule."""
+
+	def __init__(self, match, replace, reply = None, state = None, new_state = None):
+		self.match = match
+		self.replace = replace
+		self.reply = reply
+		self.state = state
+		self.new_state = new_state
+
+class Logger:
+	"""Handles logging information, errors, packets etc."""
+
+	BOLD = '\033[1m'
+	NORMAL = '\033[0m'
+
+	def timestamp(self):
+		"""Creates time stamp."""
+
+		return time.strftime("%H:%M:%S")
+
+	def error(self, text):
+		"""Logs error message."""
+
+		print self.BOLD + self.timestamp() + "  " + text + self.NORMAL
+		print
+
+	def misc(self, text):
+		"""Logs miscellaneous message."""
+
+		print self.BOLD + self.timestamp() + "  " + text + self.NORMAL
+		print
+
+	def http(self, label, data):
+		"""Logs HTTP data (request or reply)."""
+
+		print self.BOLD + self.timestamp() + "  " + label + self.NORMAL
+		print
+		print data
+		print
+
+	def packet(self, label, data):
+		"""Logs binary packet in hex and ASCII."""
+
+		print self.BOLD + self.timestamp() + "  " + label + self.NORMAL
+		print
+
+		hex = ""
+		chars = ""
+		offset = ""
+
+		for i in range(len(data)):
+			if i % 16 == 0:
+				offset = "    %04x: " % i
+
+			hex = hex + "%02x " % ord(data[i])
+
+			if data[i] < ' ' or data[i] > '~':
+				chars = chars + "."
+			else:
+				chars = chars + data[i]
+
+			if i % 16 == 15:
+				print offset + hex + " " + chars
+				hex = ""
+				chars = ""
+				offset = ""
+	
+		if hex and chars and offset:
+			print offset + "%-48s" % hex + " " + chars
+
+		print
+
+class ExtendedConfigParser(ConfigParser):
+	"""Adds basic exception handling to ConfigParser. Adds a method
+	to parse IP address and store it in a tuple."""
+
+	def getaddress(self, section, option):
+		"""Gets IP address with port and stores it in a tuple.
+		Returns None on exceptions."""
+
+		text = self.get(section, option)
+		if not text:
+			return None
+		tmp = string.split(text, ':')
+		if len(tmp) != 2:
+			return None
+		try:
+			return (tmp[0], int(tmp[1]))
+		except:
+			return None
+
+	def get(self, section, option):
+		"""Gets string value. Returns None on exceptions."""
+
+		try:
+			return ConfigParser.get(self, section, option)
+		except (NoSectionError, NoOptionError):
+			return None
+
+	def getint(self, section, option):
+		"""Gets integer value. Returns None on exceptions."""
+
+		try:
+			return ConfigParser.getint(self, section, option)
+		except (NoSectionError, NoOptionError, TypeError):
+			return None
+
+	def getboolean(self, section, option):
+		"""Gets boolean value. Returns None on exceptions."""
+
+		try:
+			return ConfigParser.getboolean(self, section, option)
+		except (NoSectionError, NoOptionError, AttributeError):
+			return None
+
+class Config:
+	"""Reads, stores and writes configuration."""
+
+	appmsg_address = ("appmsg.gadu-gadu.pl", 80)
+	local_address = (None, 0)
+	server_address = (None, 0)
+	saved_server_address = (None, 0)
+	simulation = False
+
+	gadu_port = 8074
+	proxy_port = 8080
+
+	proxy_request_rules = []
+	proxy_reply_rules = []
+	client_packet_rules = []
+	server_packet_rules = []
+
+	def read(self, path):
+		"""Reads configuration from a file.
+
+		Arguments:
+		- path: configuration file path"""
+
+		config = ExtendedConfigParser()
+		config.read(config_path)
+		
+		tmp = config.getaddress("general", "appmsg_address")
+		if tmp:
+			self.appmsg_address = tmp
+
+		tmp = config.getaddress("general", "local_address")
+		if tmp:
+			self.local_address = tmp
+
+		tmp = config.getaddress("general", "server_address")
+		if tmp:
+			self.server_address = tmp
+
+		tmp = config.getboolean("general", "simulation")
+		if tmp:
+			self.simulation = tmp
+
+		tmp = config.getint("general", "gadu_port")
+		if tmp:
+			self.gadu_port = tmp
+
+		tmp = config.getint("general", "proxy_port")
+		if tmp:
+			self.proxy_port = tmp
+
+		for section in config.sections():
+			match = config.get(section, "match")
+			replace = config.get(section, "replace")
+			reply = config.get(section, "reply")
+
+			try:
+				if match:
+					match = match.decode('string_escape')
+				if replace:
+					replace = replace.decode('string_escape')
+				if reply:
+					reply = reply.decode('string_escape')
+			except ValueError:
+				logger.error("Invalid rule in section " + section)
+				continue
+
+			state = config.get(section, "state")
+			new_state = config.get(section, "new_state")
+
+			rule = Rule(match, replace, reply, state, new_state)
+
+			if section[:15] == "proxy_request::":
+				self.proxy_request_rules.append(rule)
+
+			if section[:13] == "proxy_reply::":
+				self.proxy_reply_rules.append(rule)
+
+			if section[:15] == "client_packet::":
+				self.client_packet_rules.append(rule)
+
+			if section[:15] == "server_packet::":
+				self.server_packet_rules.append(rule)
+
+		del config
+
+	def write(self, path):
+		"""Writes configuration to a file.
+
+		Arguments:
+		- path: configuration file path"""
+
+		f = open(path, 'w+')
+
+		f.write("[general]\n")
+
+		if self.appmsg_address != ("appmsg.gadu-gadu.pl", 80):
+			f.write("appmsg_address=%s:%d\n" % self.appmsg_address)
+
+		if self.local_address != (None, 0):
+			f.write("local_address=%s:%d\n" % self.local_address)
+
+		if self.server_address != (None, 0):
+			f.write("server_address=%s:%d\n" % self.server_address)
+
+		if self.simulation:
+			f.write("simulation=true\n")
+
+		if self.gadu_port != 8074:
+			f.write("gadu_port=%d\n" % (self.gadu_port))
+
+		if self.proxy_port != 8080:
+			f.write("proxy_port=%d\n" % (self.proxy_port))
+
+		index = 1
+
+		sections = [(self.proxy_request_rules, "proxy_request"),
+			    (self.proxy_reply_rules, "proxy_reply"),
+			    (self.client_packet_rules, "client_packet"),
+			    (self.server_packet_rules, "server_packet")]
+
+		for section in sections:
+			(rules, name) = section
+			for rule in rules:
+				f.write("\n[%s::%d]\n" % (name, index))
+				if rule.state:
+					f.write("state=%s\n" % (rule.state))
+				if rule.match:
+					f.write("match=%s\n" % (rule.match.encode('string_escape')))
+				if rule.replace:
+					f.write("replace=%s\n" % (rule.replace.encode('string_escape')))
+				if rule.reply:
+					f.write("reply=%s\n" % (rule.reply.encode('string_escape')))
+				if rule.new_state:
+					f.write("new_state=%s\n" % (rule.new_state))
+				index = index + 1
+
+		f.close()
+
+		return
+
+	def get_server_address(self):
+		"""Returns server address. If address is not forced in
+		configuration, returns saved address retrieved from hub."""
+
+		if self.server_address != (None, 0):
+			return self.server_address
+		else:
+			return self.saved_server_address
+	
+	def set_server_address(self, address):
+		"""Saves server address retrieved from original hub."""
+
+		self.saved_server_address = address
+
+
+class GaduHandler(BaseRequestHandler):
+	"""Handles incoming Gadu-Gadu connection."""
+
+	def mangle_packet(self, data, rules):
+		"""Mangles incoming packet.
+
+		Argument:
+		- data: Packet data
+		- rules: List of rules
+		
+		Returns a tuple containing mangled packet (or original packet
+		if no rule matched) and reply to sender (or None if no rule
+		matched)."""
+
+		reply = None
+
+		for rule in rules:
+			if rule.state and not re.match(rule.state, self.state):
+				continue
+
+			if rule.match and not re.match(rule.match, data):
+				continue
+
+			if rule.match and rule.replace:
+				data = re.sub(rule.match, rule.replace, data)
+
+			if rule.reply:
+				reply = rule.reply
+
+			if rule.new_state:
+				logger.misc("Changing state from '%s' to '%s'" % (self.state, rule.new_state))
+				self.state = rule.new_state
+
+			break
+
+		return (data, reply)
+
+
+	def handle(self):
+		"""Handles incoming connection."""
+
+		self.state = "default"
+
+		logger.misc("Client connected from %s:%d" % self.request.getpeername())
+
+		if not config.simulation and config.get_server_address() == (None, 0):
+			logger.error("Server address unknown, closing connection")
+			return
+
+		client = self.request
+		client_data = ""
+
+		if config.simulation:
+			(new_packet, reply) = self.mangle_packet("", config.client_packet_rules)
+
+			if reply:
+				logger.packet("Sending simulated packet to client", reply)
+				client.send(reply)
+
+		else:
+			server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			server_data = ""
+	
+			try:
+				server.connect(config.get_server_address())
+			except socket.error:
+				logger.error("Error connecting to hub")
+				return
+
+			logger.misc("Connected to server")
+		
+		client_active = True
+
+		while True:
+			socks = []
+
+			if client_active:
+				socks.append(client)
+
+			if not config.simulation:
+				socks.append(server)
+
+			(iwtd, owtd, ewtd) = select.select(socks, [], [])
+
+			if client in iwtd:
+				tmp = client.recv(4096)
+
+				if not tmp:
+					logger.misc("Client closed connection")
+					break
+
+				client_data = client_data + tmp
+
+				logger.misc("Received %d bytes from client" % len(tmp))
+
+				while len(client_data) >= 8:
+					(type, length) = struct.unpack("<II", client_data[:8])
+					if len(client_data) < length + 8:
+						break
+
+					packet = client_data[:length+8]
+
+					logger.packet("Received packet from client", packet)
+
+					(new_packet, reply) = self.mangle_packet(packet, config.client_packet_rules)
+
+					if reply:
+						logger.packet("Sending simulated packet to client", reply)
+						client.send(reply)
+
+					if not config.simulation and new_packet:
+						if packet != new_packet:
+							logger.packet("Mangled packet from client", new_packet)
+							packet = new_packet
+	
+						server.send(packet)
+
+					client_data = client_data[length+8:]
+
+			if not config.simulation and server in iwtd:
+				tmp = server.recv(4096)
+
+				if not tmp:
+					logger.misc("Server closed connection")
+					break
+
+				server_data = server_data + tmp
+
+				logger.misc("Received %d bytes from server" % len(tmp))
+
+				while len(server_data) >= 8:
+					(type, length) = struct.unpack("<II", server_data[:8])
+					if len(server_data) < length + 8:
+						break
+
+					packet = server_data[:length+8]
+
+					logger.packet("Received packet from server", packet)
+
+					(new_packet, reply) = self.mangle_packet(packet, config.server_packet_rules)
+
+					if reply:
+						logger.packet("Sending simulated packet to server", reply);
+						server.send(reply)
+
+					if new_packet:
+						if packet != new_packet:
+							logger.packet("Mangled packet from server", new_packet)
+							packet = new_packet
+
+						logger.misc("Sending %d byte packet to client" % len(packet))
+
+						client.send(packet)
+
+					server_data = server_data[length+8:]
+
+		client.close()
+
+		if not config.simulation:
+			server.close()
+
+		return
+
+class ProxyHandler(BaseRequestHandler, GaduHandler):
+	"""Handles incoming proxy and HTTP connections."""
+
+	def mangle_text(self, data, rules):
+		"""Mangles text data.
+
+		Arguments:
+		- data: Text data
+		- rules: List of rules"""
+
+		for rule in rules:
+			data = re.sub(rule.match, rule.replace, data)
+
+		return data
+
+	def handle(self):
+		"""Handles incoming connection."""
+
+		client_file = self.request.makefile("w+")
+
+		# Store local address if not forced
+
+		self.local_address = config.local_address
+
+		if self.local_address == (None, 0):
+			self.local_address = self.request.getsockname()
+
+		# Read HTTP headers
+
+		headers = []
+
+		while True:
+			line = client_file.readline()
+
+			if not line:
+				logger.error("Client closed connection unexpectedly")
+				return
+
+			if line == "\r\n":
+				break
+
+			headers.append(line)
+		
+		# Handle HTTP method
+	
+		if len(headers) < 1:
+			logger.error("Empty request received from client")
+			return
+
+		if headers[0][:8] == "CONNECT ":
+			# Pass connection to GaduHandler class
+
+			client_file.write("HTTP/1.0 200 OK\r\n\r\n")
+			client_file.flush()
+			client_file.close() # self.request still valid
+			GaduHandler.handle(self)
+			return
+
+		elif headers[0][:4] == "GET ":
+			self.request.close() # client_file still valid
+			pass
+
+		else:
+			logger.error("Unsupported method received from client (" + headers[0].strip() + ")")
+			return
+
+		# Check if this is an appmsg request
+
+		if headers[0].find("/appsvc/appmsg") != -1:
+			hub_request = True
+			request_label = "Hub"
+		else:
+			hub_request = False
+			request_label = "Service"
+
+		# Log original request
+
+		logger.http("Original request", "".join(headers) + "\r\n")
+
+		# Parse proxy request
+
+		if headers[0][:11] == "GET http://":
+			tmp = string.split(headers[0][11:], '/', 1)
+
+			if len(tmp) != 2:
+				logger.error("Invalid proxy request received from client (" + headers[0].strip() + ")")
+				return
+
+			host = tmp[0]
+			rest = "/" + tmp[1]
+
+			host_found = False
+
+			for i in range(len(headers)):
+				if headers[i][:5].lower() == "host:":
+					host_found = True
+
+			if host_found == False:
+				headers.append("Host: " + host + "\r\n")
+
+			headers[0] = "GET " + rest
+
+			if host.find(":") != -1:
+				tmp = host.split(":", 1)
+				address = (tmp[0], int(tmp[1]))
+			else:
+				address = (host, 80)
+		else:
+			address = appmsg_address
+
+		# Create new request
+
+		request = "".join(headers)
+
+		logger.http(request_label + " request (parsed)", request)
+
+		new_request = self.mangle_text(request, config.proxy_request_rules)
+
+		if request != new_request:
+			logger.http(request_label + " request (mangled)", new_request)
+			request = new_request
+
+		# Make request to original server or simulate reply
+
+		if config.simulation:
+			if hub_request:
+				(ip, port) = self.local_address
+				reply = "HTTP/1.0 200 OK\r\n\r\n0 0 %s %s:%d\n" % (ip, ip, port)
+			else:
+				# Requests other than hub are unsupported
+
+				reply = "HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n<H1>Not Found</H1>"
+
+			logger.http(request_label + " reply (simulated)", reply)
+
+		else:
+			reply = self.get_reply(request, address, hub_request)
+
+			if not reply:
+				reply = "HTTP/1.0 503 Service Unavailable\r\nContent-type: text/html\r\n\r\n<H1>Service Unavailable</H1>"
+				logger.http("Proxy reply", reply)
+				client_file.write(reply)
+				client_file.flush()
+				return
+
+			logger.http(request_label + " reply", reply)
+
+		# Mangle reply
+
+		new_reply = self.mangle_text(reply, config.proxy_reply_rules)
+
+		if reply != new_reply:
+			logger.http(request_label + " reply (mangled)", new_reply)
+			reply = new_reply
+
+		# Send the reply to the client
+
+		client_file.write(reply)
+		client_file.flush()
+		client_file.close()
+	
+		return
+
+	def get_reply(self, address, request, hub = False):
+		"""Connects to original server and gets reply.
+
+		Arguments:
+		- request: Complete request string
+		- address: Server address
+		- hub: Flag indicating hub connection
+
+		Returns complete reply string."""
+
+		# Connect to original server
+
+		server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+		try:
+			server.connect(address)
+		except socket.error:
+			return False
+
+		server.send(request)
+		server_file = server.makefile("w+")
+		server.close()
+
+		# Read the reply. First the headers...
+
+		headers = []
+		body = []
+
+		while True:
+			line = server_file.readline()
+
+			if not line:
+				return False
+
+			if line == "\r\n":
+				break
+
+			headers.append(line)
+
+		if len(headers) < 1:
+			return False
+
+		# ...then the reply body
+
+		while True:
+			line = server_file.readline()
+
+			if not line:
+				break
+
+			body.append(line)
+
+		# If this is a hub reply, substitute server addres with our own
+
+		if hub and headers[0][:12] == "HTTP/1.0 200":
+			body[0] = self.change_server_address(body[0], self.local_address)
+
+		# Return complete reply
+
+		return "".join(headers) + "\r\n" + "".join(body)
+
+	def change_server_address(self, line, address):
+		"""Substitutes server address in hub reply. Stores original
+		address for subsequent connections.
+
+		Arguments:
+		- line: First line of the reply
+		- address: Local address
+
+		Returns modified reply."""
+
+		rule = re.compile("^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:(\d{1,5}))*")
+
+		fields = string.split(line)
+
+		(ip, port) = address
+
+		# Substitute all occurences of IP addresses to our own
+
+		for i in range(len(fields)):
+			match = rule.match(fields[i])
+
+			if not match:
+				continue
+
+			# Substitute but store the original
+
+			if match.lastindex == 1:
+				fields[i] = ip
+				address = (match.group(1), 8074)
+			else:
+				fields[i] = ip + ":" + str(port)
+				address = (match.group(1), int(match.group(3)))
+
+			config.set_server_address(address)
+
+		# Return result. Note that hub end the line with "\n"
+		# not "\r\n".
+
+		return " ".join(fields) + "\n"
+
+class ThreadingReuseAddrTCPServer(ThreadingTCPServer):
+	"""Sets allow_reuse_address in ThreadingTCPServer."""
+
+	def __init__(self, bind, handler):
+		self.allow_reuse_address = True
+
+		try:
+			ThreadingTCPServer.__init__(self, bind, handler)
+		except:
+			(ip, port) = bind
+			logger.error("Unable to start server at port %d" % port)
+
+class ServerThread(Thread):
+	"""TCP server thread."""
+
+	def __init__(self, port, handler):
+		self.port = port
+		self.handler = handler
+		Thread.__init__(self)
+
+	def run(self):
+		"""Thread body. Stars TCP server."""
+
+		self.server = ThreadingReuseAddrTCPServer(('', self.port), self.handler)
+		self.server.serve_forever()
+
+logger = Logger()
+
+config = Config()
+config.read(config_path)
+config.write(config_path + "~")
+
+proxy_thread = ServerThread(config.proxy_port, ProxyHandler)
+proxy_thread.start()
+
+gadu_thread = ServerThread(config.gadu_port, GaduHandler)
+gadu_thread.start()
+
+logger.misc("Servers started")
+
+try:
+	while True:
+		time.sleep(1)
+#		raw_input()
+except KeyboardInterrupt:
+	sys.exit()
