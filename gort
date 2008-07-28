@@ -877,7 +877,6 @@ if __name__ == "__main__":
 
 	config = Config()
 	config.read(config_file)
-	config.write(config_file + "~")
 
 	if config.simulation:
 		log.info("Simulation mode")
