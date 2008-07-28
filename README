@@ -113,7 +113,7 @@ wcześniej.
    Oprócz parametrów "match" i "replace" może wystąpić dowolna liczba
    parametrów o nazwach rozpoczynających się od "reply", które powodują
    odpowiedź danym pakietem do nadawcy. Dla przykładu, jeśli na każdą
-   wysyłaną wiadomość, klient miał otrzymać potwierdzenie i wiadomość
+   wysyłaną wiadomość, klient ma otrzymać potwierdzenie i wiadomość
    zwrotną, można stworzyć regułę:
 
       [client_packet::msg]
@@ -185,7 +185,7 @@ można stworzyć następującą regułę, która odpowie informacją o udanym lo
    reply=\x03\x00\x00\x00####\x1f
    new_state=connected
 
-Dla testu można też sprawić, żeby pierwsza osoba na z listy kontaktów pojawiła
+Dla testu można też sprawić, żeby pierwsza osoba z listy kontaktów pojawiła
 się jako dostępna:
 
    [client_packet::3]
@@ -198,7 +198,7 @@ w reakcji na określone wiadomości lub zmiany stanu z opisem:
 
    [client_packet::4]
    state=connected
-   match=invalid packet
+   match=.*invalid packet.*
    reply=\xff\xff\xff\xff\xff\xff\xff\xff
 
 
