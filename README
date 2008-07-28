@@ -54,6 +54,14 @@ Co zrobi klient, kiedy na liście kontaktów pojawi się ktoś z dziwnym stanem?
    replace=\\1\xff\\2
 
 
+Źródła
+------
+
+Chwilowo można go pobrać jedynie z repozytorium Subversion:
+
+   svn co http://toxygen.net/svn/gort/trunk/ gort
+
+
 Konfiguracja
 ------------
 
