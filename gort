@@ -1,7 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-
-# Based on http://code.activestate.com/recipes/66012/ by Jürgen Hermann
+#
+# Gort v0.1
+# Wojtek Kaniewski <wojtekka@toxygen.net>
+# Public Domain
+#
+# Some code from http://code.activestate.com/recipes/66012/ by Jürgen Hermann
 
 import os, sys, socket, signal, string, re, time, select, struct, getopt
 
