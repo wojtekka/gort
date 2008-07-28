@@ -1,0 +1,232 @@
+Gort! Klaatu barada nikto!
+--------------------------
+
+Gort jest serwerem proxy dla protokołu Gadu-Gadu i związanego z nim usług
+HTTP. Może działać na kilka sposobów:
+
+1. Bezpośrednie wskazanie serwera -- klient łączy się bezpośrednio z portem
+   8074 maszyny, na której uruchomiono Gorta, a ten przekazuje wszystkie dane
+   do prawdziwego serwera. Tryb ten wymaga klienta, któremu można wskazać
+   serwer Gadu-Gadu, np. uniksowe klienty (ekg, ekg2, Kadu itd.) Wymaga również
+   podania adresu oryginalnego serwera w konfiguracji.
+
+2. Połączenie przez serwer proxy -- Gort działa jako serwer pośredniczący
+   HTTP. Przekazuje zapytanie do huba, ale w odpowiedzi podmienia adres
+   prawdziwego serwera na swój. Połączenie z portem 8074 przekazuje do serwera,
+   którego adres widniał w odpowiedzi huba.
+
+3. Symulacja huba i serwera -- na maszynie z badanym klientem do pliku hosts
+   (/etc/hosts, C:\Windows\System32\Drivers\Etc\Hosts) dodaje się wpis
+   o nazwie appmsg.gadu-gadu.pl i adresem maszyny, na której działa Gort.
+   Gort podobnie jak przy pracy jako serwer proxy, przekaże odpowiedź do
+   oryginalnego huba, zapamięta adres itd. Ten tryb wymaga uprawnień do 
+   nasłuchiwania na porcie 80.
+
+4. Symulacja -- dowolny z powyższych trybów z tą różnicą, że Gort nie łączy
+   się z prawdziwym hubem i serwerem, ale sam generuje odpowiedzi.
+
+No dobrze, ale co sprawia, że Gort jest wyjątkowy, pożyteczny i przyjemny
+w dotyku? Każdy pakiet, zapytanie, odpowiedź można dowolnie zmodyfikować za 
+pomocą prostych reguł. Nie wiadomo, jak odpowie hub, gdy zmieni się parametr
+fmt= zapytania? Proste! Wystarczy do pliku konfiguracyjnego gort.conf dodać
+regułę:
+
+   [http_request::foo]
+   match=fmt=2
+   replace=fmt=0
+
+Jak zachowa się klient, jeśli otrzyma ujemny identyfikator wiadomości?
+
+   [http_reply::bar]
+   match=\x0d\x0a0
+   replace=\x0d\x0a-1
+
+Czy serwer obsłuży klienta Gadu-Gadu 8.0, który loguje się innym pakietem?
+
+   [client_packet::baz]
+   match=^\x29\x00\x00\x00
+   replace=\x19\x00\x00\x00
+
+Co zrobi klient, kiedy na liście kontaktów pojawi się ktoś z dziwnym stanem?
+
+   [server_packet::bla]
+   match=^(\x17\x00\x00\x00........).(.*)
+   replace=\\1\xff\\2
+
+
+Konfiguracja
+------------
+
+Podstawowa sekcja pliku konfiguracyjnego (gort.conf w aktualnym katalogu)
+zawiera sekcję z ogólnymi ustawieniami. Podane wartości są domyślnymi:
+
+   [general]
+
+   ; Adres oryginalnego huba
+   appmsg_address=appmsg-gadu-gadu.pl:80
+
+   ; Adres komputera, na którym nasłuchuje Gort, który jest przekazywany
+   ; klientom. Domyślnie jest pusty i wykrywany automatycznie.
+   local_address=
+
+   ; Adres oryginalnego serwera, do którego przekazywane jest połączenie.
+   ; Domyślnie jest pusty i brany z odpowiedzi oryginalnego huba.
+   server_address=
+
+   ; Port, na którym nasłuchuje usługa Gadu-Gadu
+   gadu_port=8074
+
+   ; Port, na którym nasłuchuje usługa proxy
+   proxy_port=8080
+
+   ; Port, na którym nasłuchuje usługa huba
+   hub_port=80
+
+   ; Flaga symulacji
+   simulation=no
+
+Oprócz ogólnych ustawień, są 4 rodzaje reguł, których przykłady pokazano
+wcześniej.
+
+1. "http_request", "http_reply" dotyczą dotyczą połączeń HTTP, odpowiednio
+   zapytań i odpowiedzi. Nazwa sekcji pliku konfiguracyjnego składa się z
+   nazwy sekcji, dwóch dwukropków i dowolnej, unikalnej nazwy identyfikującej
+   regułę, np. liczby czy ciągu znaków. Parametr "match" zawiera wyrażenie
+   regularne dopasowania, parametr "replace" podstawienie odpowiadające
+   zapytaniu. Oba parametry są formatowane jak pythonowe ciągi znaków,
+   tj. "\xNN" jest liczbą heksadecymalną, a "\" zapisuje się jako "\\",
+   co pozwala w łatwy sposób zapisywać dowolne liczby binarne. Należy
+   pamiętać, że podstawienie typu "\1" należy zapisać jako "\\1".
+
+2. "client_packet, "server_packet" dotyczą protokołu Gadu-Gadu. Pierwszy
+   jest dla pakietów wysyłanych przez klienta do serwera, drugi dla pakietów
+   wysyłanych przez serwer do klienta.
+   
+   Oprócz parametrów "match" i "replace" może wystąpić dowolna liczba
+   parametrów o nazwach rozpoczynających się od "reply", które powodują
+   odpowiedź danym pakietem do nadawcy. Dla przykładu, jeśli na każdą
+   wysyłaną wiadomość, klient miał otrzymać potwierdzenie i wiadomość
+   zwrotną, można stworzyć regułę:
+
+      [client_packet::msg]
+      match=^\x0b\x00\x00\x00....(....)(....)(....)(.*)
+      reply1=\x05\x00\x00\x00####\x02\x00\x00\x00\\1\\2
+      reply2=\x0a\x00\x00\x00####\\1\\2\x00\x00\x00\x00\\3\\4
+
+   Jeśli parametr "reply" zawiera cztery znaki "#" na pozycji 4, powoduje to
+   automatyczne obliczenie rozmiaru pakietu i podstawienie go w wysyłanym
+   pakiecie.
+
+   Parametr "state" zawiera nazwę stanu (dowolny ciąg znaków, domyślnie
+   "default"), dla którego reguła będzie brana pod uwagę. Jeśli nie podano,
+   reguła będzie aktywna w dowolnym stanie. Parametr "new_state" pozwala
+   zmienić stan na inny, jeśli reguła została dopasowana. Poprzedni przykład
+   można zmodyfikować tak, żeby odpowiadać tylko w określonych sytuacjach:
+
+      [client_packet::echo_on]
+      match=.*echo on.*
+      new_state=echo
+      replace=
+
+      [client_packet::echo_off]
+      match=.*echo off.*
+      new_state=default
+      replace=
+
+      [client_packet::msg]
+      state=echo
+      match=^\x0b\x00\x00\x00....(....)(....)(....)(.*)
+      ...
+
+   Gdy w treści pakietu znajdzie się ciąg znaków "echo on", aktualny stan
+   połączenia zostanie zmieniony na "echo" i cały pakiet zostanie podmieniony
+   na pusty ciąg, co spowoduje, że nie zostanie przekazany do serwera. Podobna
+   reakcja na ciąg "echo off" zmieni stan na domyślny. Ostatnia reguła będzie
+   aktywna tylko w stanie "echo". Stany przydają się szczególnie w symulacji,
+   ale o tym poniżej.
+
+
+Symulacja
+---------
+
+Tryb symulacji pozwala wysyłać dowolne informacje do klienta bez konieczności
+połączenia z siecią i/lub obciążania serwerów Gadu-Gadu niepotrzebnym ruchem.
+Aby włączyć tryb symulacji wystarczy w pliku konfiguracyjnym wpisać:
+
+   [general]
+   simulation=yes
+
+Sama reguła niestety nie wystarczy, by klient poprawnie się zalogował. Zgodnie
+z protokołem, serwer najpierw wysyła losową wartość do obliczenia skrótu hasła.
+Gort przy połączeniu klienta sprawdza, czy istnieje reguła dla pustego pakietu.
+Jeśli tak, wysyła odpowiedź:
+
+   [client_packet::1]
+   state=default
+   match=
+   reply=\x01\x00\x00\x00####\x12\x34\x56\x78
+   new_state=nonce
+
+Następnie klient wysyła pakiet logowania. Ponieważ rodzaj pakietu zależy od
+wersji klienta, a przy testach zwykle weryfikacja hasła nie jest potrzebna,
+można stworzyć następującą regułę, która odpowie informacją o udanym logowaniu:
+
+   [client_packet::2]
+   state=nonce
+   match=.*
+   reply=\x03\x00\x00\x00####\x1f
+   new_state=connected
+
+Dla testu można też sprawić, żeby pierwsza osoba na z listy kontaktów pojawiła
+się jako dostępna:
+
+   [client_packet::3]
+   state=connected
+   match=^\x10\x00\x00\x00....(....)
+   reply=\x18\x00\x00\x00####\\1\x02\x00\x00\x00\x00\x00\x00\x2a\x00\x00\x00\x00\x00\x00
+
+Kolejne reguły mogą powodować wysyłanie dowolnych (np. uszkodzonych) pakietów
+w reakcji na określone wiadomości lub zmiany stanu z opisem:
+
+   [client_packet::4]
+   state=connected
+   match=invalid packet
+   reply=\xff\xff\xff\xff\xff\xff\xff\xff
+
+
+Logowanie
+---------
+
+Każdy pakiet, zapytanie i odpowiedź są logowanie. Domyślnie trafiają do
+pliku gort.log w aktualnym katalogu, ale po uruchomieniu programu
+z parametrem -v, będą wyświetlane na terminalu.
+
+
+Uruchomienie
+------------
+
+Program jest samowystarczalnym skryptem w języku Python, który pracuje w tle.
+Na pewno działa pod Ubuntu 8.04. Parametry wywołania to:
+
+  -c, --config=PLIK  Czyta konfigurację z podanego pliku
+  -l, --log=PLIK     Zapisuje logi do podanego pliku
+  -v, --verbose      Nie przechodzi w tło, wyświetla logi na terminalu
+  -h, --help         Wyświetla listę parametrów
+
+
+Uwaga, Attention, Vorsicht
+--------------------------
+
+Program zawiera mnóstwo błędów, rzuca wyjątkami, nie stosuje blokad przy
+dostępie do zmiennych współdzielonych przez wątki, był pisany późnymi 
+wieczorami etc. Dlatego nie należy go stosować w środowisku produkcyjnym.
+Prawdę mówiąc, nawet w środowisku testowym może narobić więcej szkód, niż
+pożytku.
+
+
+Licencja
+--------
+
+Domena publiczna, bo co komu po wykorzystaniu tego kodu?
+
+
