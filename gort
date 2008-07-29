@@ -792,7 +792,7 @@ class ServerThread(Thread):
 		Thread.__init__(self)
 
 	def run(self):
-		"""Thread body. Stars TCP server."""
+		"""Thread body. Starts TCP server."""
 
 		try:
 			self.server = ThreadingReuseAddrTCPServer(('', self.port), self.handler)
