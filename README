@@ -15,15 +15,15 @@ HTTP. Może działać na kilka sposobów:
    prawdziwego serwera na swój. Połączenie z portem 8074 przekazuje do serwera,
    którego adres widniał w odpowiedzi huba.
 
-3. Symulacja huba i serwera -- na maszynie z badanym klientem do pliku hosts
+3. Symulacja huba -- na maszynie z badanym klientem do pliku hosts
    (/etc/hosts, C:\Windows\System32\Drivers\Etc\Hosts) dodaje się wpis
    o nazwie appmsg.gadu-gadu.pl i adresem maszyny, na której działa Gort.
    Gort podobnie jak przy pracy jako serwer proxy, przekaże odpowiedź do
    oryginalnego huba, zapamięta adres itd. Ten tryb wymaga uprawnień do 
    nasłuchiwania na porcie 80.
 
-4. Symulacja -- dowolny z powyższych trybów z tą różnicą, że Gort nie łączy
-   się z prawdziwym hubem i serwerem, ale sam generuje odpowiedzi.
+4. Symulacja serwera -- dowolny z powyższych trybów z tą różnicą, że Gort nie
+   łączy się z prawdziwym hubem i serwerem, ale sam generuje odpowiedzi.
 
 No dobrze, ale co sprawia, że Gort jest wyjątkowy, pożyteczny i przyjemny
 w dotyku? Każdy pakiet, zapytanie, odpowiedź można dowolnie zmodyfikować za 
@@ -106,7 +106,7 @@ wcześniej.
    co pozwala w łatwy sposób zapisywać dowolne liczby binarne. Należy
    pamiętać, że podstawienie typu "\1" należy zapisać jako "\\1".
 
-2. "client_packet, "server_packet" dotyczą protokołu Gadu-Gadu. Pierwszy
+2. "client_packet", "server_packet" dotyczą protokołu Gadu-Gadu. Pierwszy
    jest dla pakietów wysyłanych przez klienta do serwera, drugi dla pakietów
    wysyłanych przez serwer do klienta.
    
@@ -152,6 +152,12 @@ wcześniej.
    reakcja na ciąg "echo off" zmieni stan na domyślny. Ostatnia reguła będzie
    aktywna tylko w stanie "echo". Stany przydają się szczególnie w symulacji,
    ale o tym poniżej.
+
+Kolejność sekcji w pliku konfiguracyjnym nie ma znaczenia, ponieważ i tak
+zostanie pomieszana. Dane HTTP są dopasowywane do wszystkich reguł. Pakiety
+protokołu Gadu-Gadu są dopasowywane do momentu znalezienia pierwszej pasującej
+reguły. Zamiana adresu IP oryginalnego serwera na adres Gorta w odpowiedzi
+huba jest wbudowaną regułą HTTP i nie może być zmieniona, ani wyłączona.
 
 
 Symulacja
@@ -235,6 +241,7 @@ pożytku.
 Licencja
 --------
 
-Domena publiczna, bo co komu po wykorzystaniu tego kodu?
-
+Domena publiczna, bo co komu po wykorzystaniu tego kodu? Wykorzystano fragment
+kodu ze strony http://code.activestate.com/recipes/66012/ autorstwa Jürgena
+Hermanna.
 
