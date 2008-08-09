@@ -104,7 +104,7 @@ class ExtendedConfigParser(ConfigParser):
 	"""Adds basic exception handling to ConfigParser. Adds a method
 	to parse IP address and store it in a tuple."""
 
-	def getaddress(self, section, option):
+	def getaddress(self, section, option, default_port = None):
 		"""Gets IP address with port and stores it in a tuple.
 		Returns None on exceptions."""
 
@@ -112,8 +112,13 @@ class ExtendedConfigParser(ConfigParser):
 		if not text:
 			return None
 		tmp = string.split(text, ':')
-		if len(tmp) != 2:
+		if len(tmp) < 1 or len(tmp) > 2:
 			return None
+		if len(tmp) == 1:
+			if default_port:
+				return (text, default_port)
+			else:
+				return None
 		try:
 			return (tmp[0], int(tmp[1]))
 		except:
@@ -170,22 +175,6 @@ class Config:
 		config = ExtendedConfigParser()
 		config.read(path)
 		
-		tmp = config.getaddress("general", "appmsg_address")
-		if tmp:
-			self.appmsg_address = tmp
-
-		tmp = config.getaddress("general", "local_address")
-		if tmp:
-			self.local_address = tmp
-
-		tmp = config.getaddress("general", "server_address")
-		if tmp:
-			self.server_address = tmp
-
-		tmp = config.getboolean("general", "simulation")
-		if tmp:
-			self.simulation = tmp
-
 		tmp = config.getint("general", "gadu_port")
 		if tmp:
 			self.gadu_port = tmp
@@ -197,6 +186,22 @@ class Config:
 		tmp = config.getint("general", "hub_port")
 		if tmp:
 			self.hub_port = tmp
+
+		tmp = config.getaddress("general", "appmsg_address", 80)
+		if tmp:
+			self.appmsg_address = tmp
+
+		tmp = config.getaddress("general", "local_address", self.gadu_port)
+		if tmp:
+			self.local_address = tmp
+
+		tmp = config.getaddress("general", "server_address", 8074)
+		if tmp:
+			self.server_address = tmp
+
+		tmp = config.getboolean("general", "simulation")
+		if tmp:
+			self.simulation = tmp
 
 		for section in config.sections():
 			match = config.get(section, "match")
@@ -318,8 +323,8 @@ class Config:
 		"""Returns server address. If address is not forced in
 		configuration, returns saved address retrieved from hub."""
 
-		if self.server_address != (None, 0):
-			return self.server_address
+		if config.server_address != (None, 0):
+			return config.server_address
 		else:
 			return self.saved_server_address
 	
