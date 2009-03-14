@@ -85,7 +85,7 @@ class GaduHandler(BaseRequestHandler):
 			(new_packet, reply) = self.mangle_packet("", Config().client_packet_rules)
 
 			if reply:
-				self.server.app.log_connection(self.conn, Connection.GADU_SENDING_CLIENT, reply)
+				self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, reply)
 				client.send(reply)
 
 		else:
@@ -141,7 +141,7 @@ class GaduHandler(BaseRequestHandler):
 						server.send(packet)
 
 					if reply:
-						self.server.app.log_connection(self.conn, Connection.GADU_SERVER, reply, "Simulated")
+						self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, reply)
 						client.send(reply)
 
 					client_data = client_data[length+8:]
@@ -171,7 +171,7 @@ class GaduHandler(BaseRequestHandler):
 						client.send(packet)
 
 					if reply:
-						self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, reply, "Simulated")
+						self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_CLIENT, reply)
 						server.send(reply)
 
 					server_data = server_data[length+8:]

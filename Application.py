@@ -6,15 +6,15 @@ pygtk.require('2.0')
 import gtk
 
 from MainWindow import *
+from Preferences import *
 from ServerThread import *
 from ProxyHandler import *
 from Config import *
 from Connection import *
 
 class Application:
-	gadu_thread = False
 	proxy_thread = False
-	hub_thread = False
+	ui_file = "gort.ui"
 
 	def start(self):
 		try:
@@ -45,16 +45,22 @@ class Application:
 
 	def log_connection(self, conn, type, details=None, orig_details=None):
 		event = conn.append(type, details, orig_details)
-		self.main_window.log_connection(conn, event)
+		self.main_window.log_event(conn, event)
 
 	def finish_connection(self, conn):
 		conn.close()
 		self.main_window.update_connection(conn)
 
+	def show_preferences(self):
+		self.preferences.show()
+
 	def main(self):
 		gtk.gdk.threads_init()
+		self.builder = gtk.Builder()
+		self.builder.add_from_file(self.ui_file)
 		self.main_window = MainWindow(self)
 		self.main_window.show()
+		self.preferences = Preferences(self)
 		gtk.gdk.threads_enter()
 		try:
 			gtk.main()

@@ -22,7 +22,7 @@ def _hex_dump(data):
 			chars = chars + data[i]
 
 		if i % 16 == 15:
-			result = result + offset + hex + "  " + chars + "\n"
+			result = result + offset + hex + "  " + chars + "\r\n"
 			
 		if i + 1 != len(data):
 			hex = hex + " "
@@ -30,7 +30,7 @@ def _hex_dump(data):
 	if hex and chars and offset:
 		hex = hex + "   " * (16 - (len(data) % 16))
 
-		result = result + offset + hex + "  " + chars + "\n"
+		result = result + offset + hex + "  " + chars + "\r\n"
 
 	return result
 
@@ -38,14 +38,15 @@ class Event:
 	def __init__(self, conn, type, details=None, orig_details=None):
 		self.timestamp = time.time()
 		self.timestamp_str = "%.3f" % (self.timestamp - conn.open_timestamp)
-		self.type = type
-#		self.type_str = None
-		self.type_str = "Unknown (%d)" % type
+
 		self.details = details
-		if details and orig_details and details != orig_details:
+
+		if details != orig_details:
 			self.orig_details = orig_details
 		else:
 			self.orig_details = None
+
+		self.type = type
 
 		if type == Connection.PROXY_REQUEST:
 			self.type_str = "Proxy request"
@@ -65,12 +66,24 @@ class Event:
 		elif type == Connection.GADU_CLIENT:
 			self.type_str = "Client packet"
 			self.details = _hex_dump(self.details).strip()
+			if self.orig_details:
+				self.orig_details = _hex_dump(self.orig_details).strip()
 		elif type == Connection.GADU_SERVER:
 			self.type_str = "Server packet"
+			self.details = _hex_dump(self.details).strip()
+			if self.orig_details:
+				self.orig_details = _hex_dump(self.orig_details).strip()
+		elif type == Connection.GADU_SIMULATED_CLIENT:
+			self.type_str = "Simulated client packet"
+			self.details = _hex_dump(self.details).strip()
+		elif type == Connection.GADU_SIMULATED_SERVER:
+			self.type_str = "Simulated server packet"
 			self.details = _hex_dump(self.details).strip()
 		elif type == Connection.GADU_STATE:
 			self.type_str = "Changed state to %s" % details
 			self.details = None
+		else:
+			self.type_str = "Unknown event (%d)" % self.type
 
 class Connection:
 	UNKNOWN = 0
@@ -90,6 +103,8 @@ class Connection:
 	GADU_STATE = 12
 	GADU_SERVER = 13
 	GADU_CLIENT = 14
+	GADU_SIMULATED_SERVER = 15
+	GADU_SIMULATED_CLIENT = 16
 
 	def __init__(self, source):
 		self.source = source	
