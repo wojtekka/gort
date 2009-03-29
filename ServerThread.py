@@ -26,7 +26,6 @@ class ServerThread(threading.Thread):
 	def __init__(self, app, port, handler):
 		self.server = MyThreadingTCPServer(('', port), handler)
 		self.server.app = app
-		self.daemon = False
 		threading.Thread.__init__(self)
 		self.daemon = False
 
