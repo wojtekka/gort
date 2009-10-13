@@ -23,8 +23,11 @@ def _hex_dump(data):
 
 		if i % 16 == 15:
 			result = result + offset + hex + "  " + chars + "\r\n"
+			offset = ""
+			hex = ""
+			chars = ""
 			
-		if i + 1 != len(data):
+		if i + 1 < len(data):
 			hex = hex + " "
 
 	if hex and chars and offset:
