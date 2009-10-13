@@ -49,7 +49,35 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			if line == "\r\n":
 				break
 
-		self.server.app.log_connection(self.conn, Connection.PROXY_REQUEST, "".join(self.headers))
+		# Read POST request body if available
+
+		self.body = ""
+
+		if self.headers[0][:5] == "POST ":
+			# collect POST request body
+
+			body_len = 0
+
+			for i in range(len(self.headers)):
+				if self.headers[i][:15].lower() == "content-length:":
+					try:
+						body_len = int(self.headers[i][15:].strip())
+					except ValueError:
+						self.bad_request()
+						return
+
+			while len(self.body) < body_len:
+				chunk = self.client.read(body_len - len(self.body))
+
+				if not chunk:
+					# XXX log error?
+					return
+
+				self.body = self.body + chunk
+
+		# Do some logging
+
+		self.server.app.log_connection(self.conn, Connection.PROXY_REQUEST, "".join(self.headers) + self.body)
 
 		# Handle HTTP method
 	
