@@ -32,7 +32,7 @@ class HubHandler(BaseRequestHandler):
 		else:
 			hub_request = False
 
-		orig_request = "".join(self.headers)
+		orig_request = "".join(self.headers) + self.body
 		request = self.mangle_text(orig_request, Config().http_request_rules)
 		self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, request, orig_request)
 
