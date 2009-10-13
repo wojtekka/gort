@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import time
+import time, struct
 
 def _hex_dump(data):
 	result = ""
@@ -65,19 +65,31 @@ class Event:
 			self.type_str = "HTTP reply"
 		elif type == Connection.GADU_CLIENT:
 			self.type_str = "Client packet"
+			if len(details) >= 4:
+				(type) = struct.unpack("<I", details[:4])
+				self.type_str = self.type_str + " 0x%02x" % type
 			self.details = _hex_dump(self.details).strip()
 			if self.orig_details:
 				self.orig_details = _hex_dump(self.orig_details).strip()
 		elif type == Connection.GADU_SERVER:
 			self.type_str = "Server packet"
+			if len(details) >= 4:
+				(type) = struct.unpack("<I", details[:4])
+				self.type_str = self.type_str + " 0x%02x" % type
 			self.details = _hex_dump(self.details).strip()
 			if self.orig_details:
 				self.orig_details = _hex_dump(self.orig_details).strip()
 		elif type == Connection.GADU_SIMULATED_CLIENT:
 			self.type_str = "Simulated client packet"
+			if len(details) >= 4:
+				(type) = struct.unpack("<I", details[:4])
+				self.type_str = self.type_str + " 0x%02x" % type
 			self.details = _hex_dump(self.details).strip()
 		elif type == Connection.GADU_SIMULATED_SERVER:
 			self.type_str = "Simulated server packet"
+			if len(details) >= 4:
+				(type) = struct.unpack("<I", details[:4])
+				self.type_str = self.type_str + " 0x%02x" % type
 			self.details = _hex_dump(self.details).strip()
 		elif type == Connection.GADU_STATE:
 			self.type_str = "Changed state to %s" % details
