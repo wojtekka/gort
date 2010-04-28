@@ -65,6 +65,8 @@ class Application:
 		try:
 			gtk.main()
 		except KeyboardInterrupt:
-			sys.exit()
+			pass
 		gtk.gdk.threads_leave()
+		if self.proxy_thread:
+			self.proxy_thread.shutdown()
 

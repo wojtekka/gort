@@ -21,7 +21,9 @@ class HubHandler(BaseRequestHandler):
 
 		return data
 
-	def handle(self):
+	def handle(self, indirect=False):
+		"""indirect - connection using CONNECT instead of GET"""
+
 		self.conn.type = Connection.HTTP
 		self.server.app.update_connection(self.conn)
 
@@ -34,25 +36,32 @@ class HubHandler(BaseRequestHandler):
 
 		orig_request = "".join(self.headers) + self.body
 		request = self.mangle_text(orig_request, Config().http_request_rules)
-		self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, request, orig_request)
 
 		if Config().simulation:
+			# When simulating, we always can "connect" to the server.
+			self.reply_connected()
+			self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, request, orig_request)
+
 			(ip, port) = self.local_address
 
 			if self.headers[0].find("/appsvc/appmsg.asp") != -1:
 				reply = "HTTP/1.0 200 OK\r\n\r\n0 0 0 %s:8074 0.0.0.0 0.0.0.0\n" % (ip)
 			elif self.headers[0].find("/appsvc/appmsg2.asp") != -1:
 				reply = "HTTP/1.0 200 OK\r\n\r\n0 %s:8074 %s\n" % (ip, ip)
+			elif self.headers[0].find("/appsvc/appmsg10.asp") != -1:
+				reply = "HTTP/1.0 200 OK\r\n\r\n0 1 %s:443 %s\n" % (ip, ip)
 			elif self.headers[0].find("/appsvc/appmsg") != -1:
 				reply = "HTTP/1.0 200 OK\r\n\r\n0 0 %s:8074 %s\n" % (ip, ip)
 			else:
 				reply = "HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n<H1>Not Found</H1>"
 
 		else:
-			reply = self.get_reply(self.address, request, hub_request)
+			reply = self.get_reply(self.address, orig_request, request, hub_request)
 
 			if not reply:
-				reply = "HTTP/1.0 503 Service Unavailable\r\nContent-type: text/html\r\n\r\n<H1>Service Unavailable</H1>"
+				self.reply_error()
+				self.client.close()
+				return
 
 		# Mangle reply
 
@@ -68,7 +77,7 @@ class HubHandler(BaseRequestHandler):
 	
 		return
 
-	def get_reply(self, address, request, hub_request = False):
+	def get_reply(self, address, orig_request, request, hub_request = False):
 		"""Connects to original server and gets reply.
 
 		Arguments:
@@ -92,6 +101,7 @@ class HubHandler(BaseRequestHandler):
 			return False
 
 		self.server.app.log_connection(self.conn, Connection.HTTP_CONNECTED)
+		self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, request, orig_request)
 
 		server.send(request)
 		server_file = server.makefile("r")
@@ -103,9 +113,15 @@ class HubHandler(BaseRequestHandler):
 		body = []
 
 		while True:
-			line = server_file.readline()
+			try:
+				line = server_file.readline()
+			except socket.error, msg:
+				(errno, strerror) = msg
+				self.server.app.log_connection(self.conn, Connection.HTTP_FAILED, strerror)
+				break
 
 			if not line:
+				self.server.app.log_connection(self.conn, Connection.HTTP_FAILED, "Invalid reply")
 				return False
 
 			if line == "\r\n":
@@ -119,7 +135,12 @@ class HubHandler(BaseRequestHandler):
 		# ...then the reply body
 
 		while True:
-			line = server_file.readline()
+			try:
+				line = server_file.readline()
+			except socket.error, msg:
+				(errno, strerror) = msg
+				self.server.app.log_connection(self.conn, Connection.HTTP_FAILED, strerror)
+				break
 
 			if not line:
 				break

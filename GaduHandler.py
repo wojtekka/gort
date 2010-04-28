@@ -7,7 +7,7 @@
 #
 # Some code from http://code.activestate.com/recipes/66012/ by Jürgen Hermann
 
-import os, sys, socket, signal, string, re, time, select, struct, getopt
+import os, sys, socket, signal, string, re, time, select, struct, getopt, ssl, pprint
 
 from SocketServer import BaseRequestHandler
 from threading import *
@@ -64,7 +64,7 @@ class GaduHandler(BaseRequestHandler):
 
 
 	def handle(self):
-		"""Handles incoming connection."""
+		"""Handles incoming connection. Autodetects SSL."""
 
 		self.conn.type = Connection.GADU
 		self.server.app.update_connection(self.conn)
@@ -80,8 +80,14 @@ class GaduHandler(BaseRequestHandler):
 
 		client = self.request
 		client_data = ""
+		client_first = True
 
 		if Config().simulation:
+			# When simulating, we always can "connect" to the server.
+			self.reply_connected()
+
+			server = None
+
 			(new_packet, reply) = self.mangle_packet("", Config().client_packet_rules)
 
 			if reply:
@@ -99,9 +105,12 @@ class GaduHandler(BaseRequestHandler):
 			except socket.error, msg:
 				(errno, strerror) = msg
 				self.server.app.log_connection(self.conn, Connection.GADU_FAILED, strerror)
+				self.reply_error()
 				return
 
 			self.server.app.log_connection(self.conn, Connection.GADU_CONNECTED)
+
+			self.reply_connected()
 		
 		client_active = True
 
@@ -111,7 +120,7 @@ class GaduHandler(BaseRequestHandler):
 			if client_active:
 				socks.append(client)
 
-			if not Config().simulation:
+			if server:
 				socks.append(server)
 
 			(iwtd, owtd, ewtd) = select.select(socks, [], [])
@@ -122,6 +131,16 @@ class GaduHandler(BaseRequestHandler):
 				if not tmp:
 					# XXX log?
 					break
+
+				if client_first:
+					client_first = False
+					client = ssl.wrap_socket(client, server_side=True, certfile="gort.pem", keyfile="gort.pem", ssl_version=ssl.PROTOCOL_SSLv23)
+					details = pprint.pformat(client)
+					if server:
+						server = ssl.wrap_socket(server, ssl_version=ssl.PROTOCOL_SSLv3)
+						details = details + "\n\n" + pprint.pformat(server)
+					self.server.app.log_connection(self.conn, Connection.GADU_SSL, details)
+
 
 				client_data = client_data + tmp
 
@@ -137,7 +156,7 @@ class GaduHandler(BaseRequestHandler):
 
 					self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, packet)
 
-					if not Config().simulation and packet:
+					if server and packet:
 						server.send(packet)
 
 					if reply:
@@ -146,12 +165,19 @@ class GaduHandler(BaseRequestHandler):
 
 					client_data = client_data[length+8:]
 
-			if not Config().simulation and server in iwtd:
-				tmp = server.recv(4096)
+			if server and server in iwtd:
+				try:
+					tmp = server.recv(4096)
+				except socket.error, msg:
+					(errno, strerror) = msg
+					# XXX log?
+					break
 
 				if not tmp:
 					# XXX log?
 					break
+
+				client_first = False
 
 				server_data = server_data + tmp
 
@@ -178,7 +204,7 @@ class GaduHandler(BaseRequestHandler):
 
 		client.close()
 
-		if not Config().simulation:
+		if server:
 			server.close()
 
 		return

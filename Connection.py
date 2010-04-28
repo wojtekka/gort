@@ -97,6 +97,8 @@ class Event:
 		elif type == Connection.GADU_STATE:
 			self.type_str = "Changed state to %s" % details
 			self.details = None
+		elif type == Connection.GADU_SSL:
+			self.type_str = "Detected SSL connection"
 		else:
 			self.type_str = "Unknown event (%d)" % self.type
 
@@ -120,6 +122,7 @@ class Connection:
 	GADU_CLIENT = 14
 	GADU_SIMULATED_SERVER = 15
 	GADU_SIMULATED_CLIENT = 16
+	GADU_SSL = 17
 
 	def __init__(self, source):
 		self.source = source	

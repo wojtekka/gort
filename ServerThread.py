@@ -5,6 +5,9 @@ import socket, time, threading
 from SocketServer import ThreadingTCPServer
 
 class MyThreadingTCPServer(ThreadingTCPServer):
+	# TODO Make server blocking, but somehow exit handle_request() on
+	# some external event.
+
 	def __init__(self, bind, handler):
 		self.shutdown_flag = False
 		self.allow_reuse_address = True
@@ -12,7 +15,7 @@ class MyThreadingTCPServer(ThreadingTCPServer):
 		ThreadingTCPServer.__init__(self, bind, handler)
 		self.socket.setblocking(0)
 
-	def serve_forever(self, poll_interval = 0.5):
+	def serve_forever(self, poll_interval = 0.25):
 		while not self.shutdown_flag:
 			self.handle_request()
 			time.sleep(poll_interval)

@@ -25,6 +25,7 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 		"""Handles incoming connection."""
 
 		self.client = self.request.makefile("w+")
+		self.proxy_client = self.client	# For direct access
 
 		# Store local address if not forced
 
@@ -109,29 +110,26 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			self.address = (server[0], port)
 
 			if port == 8074 or port == 443:
-				self.good_request()
 				self.client.close() # self.request still valid
 				GaduHandler.handle(self)
 
-			elif port == 80:
-				self.headers = []
-
-				self.good_request()
-
-				while True:
-					line = self.client.readline()
-
-					if not line:
-						# XXX log error?
-						return
-
-					self.headers.append(line)
-				
-					if line == "\r\n":
-						break
-
-				HubHandler.handle(self)
-
+#			elif port == 80:
+#				self.headers = []
+#
+#				while True:
+#					line = self.client.readline()
+#
+#					if not line:
+#						# XXX log error?
+#						return
+#
+#					self.headers.append(line)
+#				
+#					if line == "\r\n":
+#						break
+#
+#				HubHandler.handle(self)
+#
 			else:
 				self.bad_request()
 
@@ -174,16 +172,19 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 		else:
 			self.bad_request()
 
-	def good_request(self):
+	def reply_connected(self):
 		reply = "HTTP/1.0 200 OK\r\n\r\n"
 		self.server.app.log_connection(self.conn, Connection.PROXY_REPLY, reply)
-		self.client.write(reply)
-		self.client.flush()
+		self.request.send(reply)
+
+	def reply_error(self):
+		reply = "HTTP/1.0 503 Service Unavailable\r\n\r\n"
+		self.server.app.log_connection(self.conn, Connection.PROXY_REPLY, reply)
+		self.request.send(reply)
 
 	def bad_request(self):
 		# XXX log error?
 		reply = "HTTP/1.0 400 Bad Request\r\n\r\n"
 		self.server.app.log_connection(self.conn, Connection.PROXY_REPLY, reply)
-		self.client.write(reply)
-		self.client.flush()
+		self.request.send(reply)
 		
