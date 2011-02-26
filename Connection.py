@@ -99,6 +99,17 @@ class Event:
 			self.details = None
 		elif type == Connection.GADU_SSL:
 			self.type_str = "Detected SSL connection"
+		elif type == Connection.GADU_CLIENT_DISCONNECTED:
+			self.type_str = "Client disconnected"
+		elif type == Connection.GADU_SERVER_DISCONNECTED:
+			self.type_str = "Server disconnected"
+		elif type == Connection.PROXY_CONNECTED:
+			self.type_str = "New connection from %s" % details
+			self.details = None
+		elif type == Connection.RAW_CLIENT:
+			self.type_str = "Client packet"
+		elif type == Connection.RAW_SERVER:
+			self.type_str = "Server packet"
 		else:
 			self.type_str = "Unknown event (%d)" % self.type
 
@@ -123,6 +134,11 @@ class Connection:
 	GADU_SIMULATED_SERVER = 15
 	GADU_SIMULATED_CLIENT = 16
 	GADU_SSL = 17
+	GADU_CLIENT_DISCONNECTED = 18
+	GADU_SERVER_DISCONNECTED = 19
+	PROXY_CONNECTED = 20
+	RAW_CLIENT = 21
+	RAW_SERVER = 22
 
 	def __init__(self, source):
 		self.source = source	

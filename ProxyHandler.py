@@ -24,8 +24,9 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 	def handle(self):
 		"""Handles incoming connection."""
 
+		self.server.app.log_connection(self.conn, Connection.PROXY_CONNECTED, self.remote_address[0] + ":" + str(self.remote_address[1]))
+
 		self.client = self.request.makefile("w+")
-		self.proxy_client = self.client	# For direct access
 
 		# Store local address if not forced
 
@@ -110,45 +111,51 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			self.address = (server[0], port)
 
 			if port == 8074 or port == 443:
-				self.client.close() # self.request still valid
+				self.client = None
 				GaduHandler.handle(self)
 
-#			elif port == 80:
-#				self.headers = []
-#
-#				while True:
-#					line = self.client.readline()
-#
-#					if not line:
-#						# XXX log error?
-#						return
-#
-#					self.headers.append(line)
-#				
-#					if line == "\r\n":
-#						break
-#
-#				HubHandler.handle(self)
-#
+			elif port == 80:
+				# Simulate connection to get headers
+				self.reply_connected()
+
+				self.headers = []
+
+				while True:
+					line = self.client.readline()
+
+					if not line:
+						# XXX log error?
+						return
+
+					self.headers.append(line)
+				
+					if line == "\r\n":
+						break
+
+				HubHandler.handle(self)
+
 			else:
 				self.bad_request()
 
 		elif self.headers[0][:11] == "GET http://" or self.headers[0][:12] == "POST http://":
-			self.request.close() # self.client is still valid
+			words = self.headers[0].split()
 
-			if self.headers[0][:11] == "GET http://":
-				method = "GET"
-			else:
-				method = "POST"
-
-			tmp = string.split(self.headers[0][len(method)+8:], '/', 1)
-
-			if len(tmp) != 2:
+			if len(words) != 3:
 				self.bad_request()
 				return
 
-			host = tmp[0]
-			rest = "/" + tmp[1]
+			method = words[0]
+			url = words[1]
+			version = words[2]
+
+			url_slash = url.find("/", 7)
+
+			if url_slash == -1:
+				host = url[7:]
+				path = "/"
+			else:
+				host = url[7:url_slash]
+				path = url[url_slash:]
 
 			host_found = False
 
@@ -159,13 +166,20 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			if host_found == False:
 				self.headers.insert(1, "Host: " + host + "\r\n")
 
-			self.headers[0] = method + " " + rest
+			self.headers[0] = method + " " + path + " " + version + "\r\n"
 
 			if host.find(":") != -1:
 				tmp = host.split(":", 1)
 				self.address = (tmp[0], int(tmp[1]))
 			else:
 				self.address = (host, 80)
+
+			# TODO Zamienić na map/grep/cokolwiek
+			tmp = self.headers
+			self.headers = []
+			for i in range(len(tmp)):
+				if tmp[i][:5].lower() != "proxy":
+					self.headers.append(tmp[i])
 
 			HubHandler.handle(self)
 

@@ -17,6 +17,12 @@ from Connection import *
 class GaduHandler(BaseRequestHandler):
 	"""Handles incoming Gadu-Gadu connection."""
 
+	PROTOCOL_UNKNOWN = 0
+	PROTOCOL_GADU = 1
+	PROTOCOL_HTTP = 2
+
+	protocol = PROTOCOL_UNKNOWN
+
 	def mangle_packet(self, data, rules):
 		"""Mangles incoming packet.
 
@@ -112,13 +118,8 @@ class GaduHandler(BaseRequestHandler):
 
 			self.reply_connected()
 		
-		client_active = True
-
 		while True:
-			socks = []
-
-			if client_active:
-				socks.append(client)
+			socks = [client]
 
 			if server:
 				socks.append(server)
@@ -126,81 +127,117 @@ class GaduHandler(BaseRequestHandler):
 			(iwtd, owtd, ewtd) = select.select(socks, [], [])
 
 			if client in iwtd:
-				tmp = client.recv(4096)
-
-				if not tmp:
-					# XXX log?
-					break
-
 				if client_first:
+					tmp = client.recv(8, socket.MSG_PEEK)
+
+					self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, tmp)
+
+					self.server.app.log_connection(self.conn, Connection.GADU_SSL, "Client talked first, he must be talking SSL")
 					client_first = False
-					client = ssl.wrap_socket(client, server_side=True, certfile="gort.pem", keyfile="gort.pem", ssl_version=ssl.PROTOCOL_SSLv23)
-					details = pprint.pformat(client)
-					if server:
-						server = ssl.wrap_socket(server, ssl_version=ssl.PROTOCOL_SSLv3)
-						details = details + "\n\n" + pprint.pformat(server)
-					self.server.app.log_connection(self.conn, Connection.GADU_SSL, details)
-
-
-				client_data = client_data + tmp
-
-				while len(client_data) >= 8:
-					(type, length) = struct.unpack("<II", client_data[:8])
-					if len(client_data) < length + 8:
+					try:
+						client = ssl.wrap_socket(client, server_side=True, certfile="gort.pem", keyfile="gort.pem", ssl_version=ssl.PROTOCOL_SSLv3)
+					except ssl.SSLError:
+						self.server.app.log_connection(self.conn, Connection.GADU_SSL, "Client negotiation error")
 						break
 
-					packet = client_data[:length+8]
-					orig_packet = packet
+					self.server.app.log_connection(self.conn, Connection.GADU_SSL, "Client negotiation succeeded")
+						
+					if server:
+						try:
+							server = ssl.wrap_socket(server, ssl_version=ssl.PROTOCOL_SSLv3)
+						except ssl.SSLError:
+							self.server.app.log_connection(self.conn, Connection.GADU_SSL, "Server negotiation error")
+							break
+						
+						self.server.app.log_connection(self.conn, Connection.GADU_SSL, "Server negotiation succeeded")
 
-					(packet, reply) = self.mangle_packet(packet, Config().client_packet_rules)
+					continue
 
-					self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, packet)
+				try:
+					tmp = client.recv(4096)
+				except socket.error, msg:
+					(errno, strerror) = msg
+					self.server.app.log_connection(self.conn, Connection.GADU_CLIENT_DISCONNECTED, strerror)
+					break
 
-					if server and packet:
-						server.send(packet)
+				if not tmp:
+					self.server.app.log_connection(self.conn, Connection.GADU_CLIENT_DISCONNECTED)
+					break
 
-					if reply:
-						self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, reply)
-						client.send(reply)
+				if self.protocol == self.PROTOCOL_GADU:
+					client_data = client_data + tmp
 
-					client_data = client_data[length+8:]
+					while len(client_data) >= 8:
+						(type, length) = struct.unpack("<II", client_data[:8])
+						if len(client_data) < length + 8:
+							break
+
+						packet = client_data[:length+8]
+						orig_packet = packet
+
+						(packet, reply) = self.mangle_packet(packet, Config().client_packet_rules)
+
+						self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, packet)
+
+						if server and packet:
+							server.send(packet)
+
+						if reply:
+							self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, reply)
+							client.send(reply)
+
+						client_data = client_data[length+8:]
+				else:
+					# XXX mangluj, mangluj!
+					self.server.app.log_connection(self.conn, Connection.RAW_CLIENT, tmp)
+					server.send(tmp)
+
 
 			if server and server in iwtd:
 				try:
 					tmp = server.recv(4096)
 				except socket.error, msg:
 					(errno, strerror) = msg
-					# XXX log?
+					self.server.app.log_connection(self.conn, Connection.GADU_SERVER_DISCONNECTED, strerror)
 					break
 
 				if not tmp:
-					# XXX log?
+					self.server.app.log_connection(self.conn, Connection.GADU_SERVER_DISCONNECTED)
 					break
+
+				# Autodetekcja protokołu Gadu-Gadu
+				if len(tmp) >= 8 and tmp[:8] == "\x01\x00\x00\x00\x04\x00\x00\x00":
+					self.protocol = self.PROTOCOL_GADU
 
 				client_first = False
 
-				server_data = server_data + tmp
+				if self.protocol == self.PROTOCOL_GADU:
+					server_data = server_data + tmp
 
-				while len(server_data) >= 8:
-					(type, length) = struct.unpack("<II", server_data[:8])
-					if len(server_data) < length + 8:
-						break
+					while len(server_data) >= 8:
+						(type, length) = struct.unpack("<II", server_data[:8])
+						if len(server_data) < length + 8:
+							break
 
-					packet = server_data[:length+8]
-					orig_packet = packet
+						packet = server_data[:length+8]
+						orig_packet = packet
 
-					(packet, reply) = self.mangle_packet(packet, Config().server_packet_rules)
+						(packet, reply) = self.mangle_packet(packet, Config().server_packet_rules)
 
-					self.server.app.log_connection(self.conn, Connection.GADU_SERVER, packet, orig_packet)
+						self.server.app.log_connection(self.conn, Connection.GADU_SERVER, packet, orig_packet)
 
-					if packet:
-						client.send(packet)
+						if packet:
+							client.send(packet)
 
-					if reply:
-						self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_CLIENT, reply)
-						server.send(reply)
+						if reply:
+							self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_CLIENT, reply)
+							server.send(reply)
 
-					server_data = server_data[length+8:]
+						server_data = server_data[length+8:]
+				else:
+					# XXX mangluj, mangluj!
+					self.server.app.log_connection(self.conn, Connection.RAW_SERVER, tmp)
+					client.send(tmp)
 
 		client.close()
 

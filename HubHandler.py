@@ -55,17 +55,27 @@ class HubHandler(BaseRequestHandler):
 			else:
 				reply = "HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n<H1>Not Found</H1>"
 
+			orig_reply = reply
+
 		else:
-			reply = self.get_reply(self.address, orig_request, request, hub_request)
+			reply = self.get_reply(self.address, orig_request, request)
 
 			if not reply:
 				self.reply_error()
 				self.client.close()
 				return
 
+			orig_reply = reply
+
+			# If this is a hub reply, substitute server addres with our own
+
+			if hub_request:
+				# XXX
+				# body[0] = self.change_server_address(body[0], self.local_address)
+				pass
+
 		# Mangle reply
 
-		orig_reply = reply
 		reply = self.mangle_text(reply, Config().http_reply_rules)
 		self.server.app.log_connection(self.conn, Connection.HTTP_REPLY, reply, orig_reply)
 
@@ -77,13 +87,13 @@ class HubHandler(BaseRequestHandler):
 	
 		return
 
-	def get_reply(self, address, orig_request, request, hub_request = False):
+	def get_reply(self, address, orig_request, request):
 		"""Connects to original server and gets reply.
 
 		Arguments:
 		- address: Server address
+		- orig_request: Original request string
 		- request: Complete request string
-		- hub_request: Flag indicating hub request
 
 		Returns complete reply string or False on failure."""
 
@@ -118,10 +128,10 @@ class HubHandler(BaseRequestHandler):
 			except socket.error, msg:
 				(errno, strerror) = msg
 				self.server.app.log_connection(self.conn, Connection.HTTP_FAILED, strerror)
-				break
+				return False
 
 			if not line:
-				self.server.app.log_connection(self.conn, Connection.HTTP_FAILED, "Invalid reply")
+				self.server.app.log_connection(self.conn, Connection.HTTP_FAILED, headers.join("\n"))
 				return False
 
 			if line == "\r\n":
@@ -147,53 +157,45 @@ class HubHandler(BaseRequestHandler):
 
 			body.append(line)
 
-#		# If this is a hub reply, substitute server addres with our own
-#
-#		if hub_request and headers[0][:12] == "HTTP/1.0 200":
-#			body[0] = self.change_server_address(body[0], self.local_address)
-
 		reply = "".join(headers) + "\r\n" + "".join(body)
 
 		return reply
 
-#	def change_server_address(self, line, address):
-#		"""Substitutes server address in hub reply. Stores original
-#		address for subsequent connections.
-#
-#		Arguments:
-#		- line: First line of the reply
-#		- address: Local address
-#
-#		Returns modified reply."""
-#
-#		rule = re.compile("^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:(\d{1,5}))*")
-#
-#		fields = string.split(line)
-#
-#		(ip, port) = address
-#		port = 8074
-#
-#		# Substitute all occurences of IP addresses to our own
-#
-#		for i in range(len(fields)):
-#			match = rule.match(fields[i])
-#
-#			if not match:
-#				continue
-#
-#			# Substitute but store the original
-#
-#			if match.lastindex == 1:
-#				fields[i] = ip
-#				address = (match.group(1), 8074)
-#			else:
-#				fields[i] = ip + ":" + str(port)
-#				address = (match.group(1), int(match.group(3)))
-#
-#			Config().set_server_address(address)
-#
-#		# Return result. Note that hub end the line with "\n"
-#		# not "\r\n".
-#
-#		return " ".join(fields) + "\n"
-#
+	def change_server_address(self, line, address):
+		"""Substitutes server address in hub reply. Stores original
+		address for subsequent connections.
+
+		Arguments:
+		- line: First line of the reply
+		- address: Local address
+
+		Returns modified reply."""
+
+		rule = re.compile("^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|ggproxy-\d+\.gadu-gadu\.pl)(?::(\d{1,5}))*")
+
+		fields = string.split(line)
+
+		(ip, port) = address
+		port = 8074
+
+		# Substitute all occurences of IP addresses to our own,
+		# but store the original.
+
+		for i in range(len(fields)):
+			match = rule.match(fields[i])
+
+			if match:
+				if match.lastindex == 1:
+					fields[i] = ip
+					address = (match.group(1), 8074)
+				else:
+					fields[i] = ip + ":" + str(port)
+					address = (match.group(1), int(match.group(2)))
+
+				Config().set_server_address(address)
+
+		# Return result. Note that hub end the line with "\n"
+		# not "\r\n".
+
+		return " ".join(fields) + "\n"
+
