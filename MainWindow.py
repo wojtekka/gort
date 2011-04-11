@@ -12,21 +12,27 @@ class MainWindow:
 	background_client = "#fff8f0"
 	background_simulated = "gray"
 
-	def on_start_menu_activate(self, widget):
-		print "on_start_menu_activate"
-		if self.app.start():
+	def update_state(self):
+		if self.app.is_started():
 			self.start_button.set_sensitive(False)
 			self.start_menu.set_sensitive(False)
 			self.pause_button.set_sensitive(True)
 			self.pause_menu.set_sensitive(True)
-
-	def on_pause_menu_activate(self, widget):
-		print "on_pause_menu_activate"
-		if self.app.pause():
+		else:
 			self.start_button.set_sensitive(True)
 			self.start_menu.set_sensitive(True)
 			self.pause_button.set_sensitive(False)
 			self.pause_menu.set_sensitive(False)
+
+	def on_start_menu_activate(self, widget):
+		print "on_start_menu_activate"
+		self.app.start()
+		self.update_state()
+
+	def on_pause_menu_activate(self, widget):
+		print "on_pause_menu_activate"
+		self.app.pause()
+		self.update_state()
 
 	def on_clear_menu_activate(self, widget):
 		print "on_clear_menu_activate"
@@ -75,14 +81,14 @@ class MainWindow:
 	def __init__(self, app):
 		self.app = app
 
-		self.app.builder.connect_signals(self)
-		self.window = self.app.builder.get_object("window1")
-		self.treeview1 = self.app.builder.get_object('treeview1')
-		self.treeview2 = self.app.builder.get_object('treeview2')
-		self.start_button = self.app.builder.get_object('start_button')
-		self.start_menu = self.app.builder.get_object('start_menu')
-		self.pause_button = self.app.builder.get_object('pause_button')
-		self.pause_menu = self.app.builder.get_object('pause_menu')
+	def create(self):
+		self.window = self.app.builder.get_object("main_window")
+		self.treeview1 = self.app.builder.get_object("treeview1")
+		self.treeview2 = self.app.builder.get_object("treeview2")
+		self.start_button = self.app.builder.get_object("start_button")
+		self.start_menu = self.app.builder.get_object("start_menu")
+		self.pause_button = self.app.builder.get_object("pause_button")
+		self.pause_menu = self.app.builder.get_object("pause_menu")
 
 		self.treeview1.get_selection().connect('changed', self.on_treeview1_treeselection_changed)
 
@@ -102,7 +108,8 @@ class MainWindow:
 		self.treeview2.insert_column_with_attributes(1, 'Time', gtk.CellRendererText(), text=0)
 		self.treeview2.insert_column_with_attributes(2, 'Information', gtk.CellRendererText(), text=1, font=2, foreground=3, background=4)
 
-		self.on_start_menu_activate(None)	# XXX temporary
+		if self.app.config.autostart:
+			self.on_start_menu_activate(None)
 
 	def add_connection(self, conn):
 		ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(conn.open_timestamp))

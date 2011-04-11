@@ -30,7 +30,7 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 
 		# Store local address if not forced
 
-		self.local_address = Config().local_address
+		self.local_address = self.server.app.config.local_address
 
 		if self.local_address == (None, 0):
 			self.local_address = self.request.getsockname()
@@ -55,13 +55,13 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 
 		self.body = ""
 
-		if self.headers[0][:5] == "POST ":
+		if self.headers[0].startswith("POST "):
 			# collect POST request body
 
 			body_len = 0
 
 			for i in range(len(self.headers)):
-				if self.headers[i][:15].lower() == "content-length:":
+				if self.headers[i].lower().startswith("content-length:"):
 					try:
 						body_len = int(self.headers[i][15:].strip())
 					except ValueError:
@@ -87,7 +87,7 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			self.bad_request()
 			return
 
-		if self.headers[0][:8] == "CONNECT ":
+		if self.headers[0].startswith("CONNECT "):
 			# Pass connection to GaduHandler class
 
 			fields = self.headers[0].split(' ')
@@ -110,9 +110,17 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 
 			self.address = (server[0], port)
 
-			if port == 8074 or port == 443:
+			if port == 8074:
 				self.client = None
 				GaduHandler.handle(self)
+
+			elif port == 443:
+				if self.server.app.config.block_ssl:
+					self.forbidden()
+					return
+				else:
+					self.client = None
+					GaduHandler.handle(self)
 
 			elif port == 80:
 				# Simulate connection to get headers
@@ -137,7 +145,7 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			else:
 				self.bad_request()
 
-		elif self.headers[0][:11] == "GET http://" or self.headers[0][:12] == "POST http://":
+		elif self.headers[0].startswith("GET http://") or self.headers[0].startswith("POST http://"):
 			words = self.headers[0].split()
 
 			if len(words) != 3:
@@ -160,7 +168,7 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			host_found = False
 
 			for i in range(len(self.headers)):
-				if self.headers[i][:5].lower() == "host:":
+				if self.headers[i].lower().startswith("host:"):
 					host_found = True
 
 			if host_found == False:
@@ -177,9 +185,14 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 			# TODO Zamienić na map/grep/cokolwiek
 			tmp = self.headers
 			self.headers = []
-			for i in range(len(tmp)):
-				if tmp[i][:5].lower() != "proxy":
-					self.headers.append(tmp[i])
+			for header in tmp:
+				if not header.lower().startswith("Proxy"):
+					self.headers.append(header)
+
+			if self.server.app.config.http_traffic == 2 or self.server.app.config.http_traffic == 3:
+				if host != self.server.app.config.hub_address[0]:
+					self.forbidden()
+					return
 
 			HubHandler.handle(self)
 
@@ -199,6 +212,11 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 	def bad_request(self):
 		# XXX log error?
 		reply = "HTTP/1.0 400 Bad Request\r\n\r\n"
+		self.server.app.log_connection(self.conn, Connection.PROXY_REPLY, reply)
+		self.request.send(reply)
+
+	def forbidden(self):
+		reply = "HTTP/1.0 403 Forbidden\r\n\r\n"
 		self.server.app.log_connection(self.conn, Connection.PROXY_REPLY, reply)
 		self.request.send(reply)
 		

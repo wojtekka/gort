@@ -80,7 +80,7 @@ class GaduHandler(BaseRequestHandler):
 		if self.address == (None, 0):
 			self.address = Config.get_server_address()
 
-		if not Config().simulation and self.address == (None, 0):
+		if not self.server.app.config.simulation and self.address == (None, 0):
 			# XXX log error?
 			return
 
@@ -88,13 +88,13 @@ class GaduHandler(BaseRequestHandler):
 		client_data = ""
 		client_first = True
 
-		if Config().simulation:
+		if self.server.app.config.simulation:
 			# When simulating, we always can "connect" to the server.
 			self.reply_connected()
 
 			server = None
 
-			(new_packet, reply) = self.mangle_packet("", Config().client_packet_rules)
+			(new_packet, reply) = self.mangle_packet("", self.server.app.config.client_packet_rules)
 
 			if reply:
 				self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, reply)
@@ -175,7 +175,7 @@ class GaduHandler(BaseRequestHandler):
 						packet = client_data[:length+8]
 						orig_packet = packet
 
-						(packet, reply) = self.mangle_packet(packet, Config().client_packet_rules)
+						(packet, reply) = self.mangle_packet(packet, self.server.app.config.client_packet_rules)
 
 						self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, packet)
 
@@ -222,7 +222,7 @@ class GaduHandler(BaseRequestHandler):
 						packet = server_data[:length+8]
 						orig_packet = packet
 
-						(packet, reply) = self.mangle_packet(packet, Config().server_packet_rules)
+						(packet, reply) = self.mangle_packet(packet, self.server.app.config.server_packet_rules)
 
 						self.server.app.log_connection(self.conn, Connection.GADU_SERVER, packet, orig_packet)
 

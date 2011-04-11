@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from ConfigParser import ConfigParser, NoOptionError, NoSectionError
+from Utils import *
 import string
 
 class ExtendedConfigParser(ConfigParser):
@@ -9,23 +10,14 @@ class ExtendedConfigParser(ConfigParser):
 
 	def getaddress(self, section, option, default_port = None):
 		"""Gets IP address with port and stores it in a tuple.
-		Returns None on exceptions."""
+		Returns None on invalid format or exceptions."""
 
-		text = self.get(section, option)
-		if not text:
-			return None
-		tmp = string.split(text, ':')
-		if len(tmp) < 1 or len(tmp) > 2:
-			return None
-		if len(tmp) == 1:
-			if default_port:
-				return (text, default_port)
-			else:
-				return None
-		try:
-			return (tmp[0], int(tmp[1]))
-		except:
-			return None
+		result = parse_ip_and_port(self.get(section, option), default_port)
+
+		if result == (None, 0):
+			result = None
+
+		return result
 
 	def get(self, section, option):
 		"""Gets string value. Returns None on exceptions."""
@@ -40,13 +32,17 @@ class ExtendedConfigParser(ConfigParser):
 
 		try:
 			return ConfigParser.getint(self, section, option)
-		except (NoSectionError, NoOptionError, TypeError):
+		except (NoSectionError, NoOptionError, TypeError, ValueError):
 			return None
 
 	def getboolean(self, section, option):
 		"""Gets boolean value. Returns None on exceptions."""
 
 		try:
-			return ConfigParser.getboolean(self, section, option)
-		except (NoSectionError, NoOptionError, AttributeError):
+			tmp = ConfigParser.get(self, section, option)
+			if tmp and tmp.lower() == "true":
+				return True
+			else:
+				return False
+		except (NoSectionError, NoOptionError):
 			return None

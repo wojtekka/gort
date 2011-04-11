@@ -35,9 +35,9 @@ class HubHandler(BaseRequestHandler):
 			hub_request = False
 
 		orig_request = "".join(self.headers) + self.body
-		request = self.mangle_text(orig_request, Config().http_request_rules)
+		request = self.mangle_text(orig_request, self.server.app.config.http_request_rules)
 
-		if Config().simulation:
+		if self.server.app.config.simulation:
 			# When simulating, we always can "connect" to the server.
 			self.reply_connected()
 			self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, request, orig_request)
@@ -76,7 +76,7 @@ class HubHandler(BaseRequestHandler):
 
 		# Mangle reply
 
-		reply = self.mangle_text(reply, Config().http_reply_rules)
+		reply = self.mangle_text(reply, self.server.app.config.http_reply_rules)
 		self.server.app.log_connection(self.conn, Connection.HTTP_REPLY, reply, orig_reply)
 
 		# Send the reply to the client
@@ -192,7 +192,7 @@ class HubHandler(BaseRequestHandler):
 					fields[i] = ip + ":" + str(port)
 					address = (match.group(1), int(match.group(2)))
 
-				Config().set_server_address(address)
+				self.server.app.config.set_server_address(address)
 
 		# Return result. Note that hub end the line with "\n"
 		# not "\r\n".
