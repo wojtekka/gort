@@ -25,7 +25,11 @@ class HubHandler(BaseRequestHandler):
 		"""indirect - connection using CONNECT instead of GET"""
 
 		self.conn.type = Connection.HTTP
-		self.server.app.update_connection(self.conn)
+
+		if self.server.app.config.hide_http:
+			self.server.app.remove_connection(self.conn)
+		else:
+			self.server.app.update_connection(self.conn)
 
 		# Make request to original server or simulate reply
 
@@ -40,7 +44,11 @@ class HubHandler(BaseRequestHandler):
 		if self.server.app.config.simulation:
 			# When simulating, we always can "connect" to the server.
 			self.reply_connected()
-			self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, request, orig_request)
+			if orig_request != request:
+				details = [orig_request, request]
+			else:
+				details = [request]
+			self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, [details])
 
 			(ip, port) = self.local_address
 
@@ -77,7 +85,11 @@ class HubHandler(BaseRequestHandler):
 		# Mangle reply
 
 		reply = self.mangle_text(reply, self.server.app.config.http_reply_rules)
-		self.server.app.log_connection(self.conn, Connection.HTTP_REPLY, reply, orig_reply)
+		if orig_reply != reply:
+			details = [orig_reply, reply]
+		else:
+			details = [reply]
+		self.server.app.log_connection(self.conn, Connection.HTTP_REPLY, details)
 
 		# Send the reply to the client
 
@@ -111,7 +123,11 @@ class HubHandler(BaseRequestHandler):
 			return False
 
 		self.server.app.log_connection(self.conn, Connection.HTTP_CONNECTED)
-		self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, request, orig_request)
+		if orig_request != request:
+			details = [orig_request, request]
+		else:
+			details = [request]
+		self.server.app.log_connection(self.conn, Connection.HTTP_REQUEST, details)
 
 		server.send(request)
 		server_file = server.makefile("r")

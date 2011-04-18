@@ -5,12 +5,18 @@ from Utils import *
 pygtk.require('2.0')
 
 class Preferences:
+	options = ["combobox_mode", "entry_proxy_port", "entry_hub_port",
+		"entry_gadu_port", "check_autostart", "check_simulation",
+		"check_block_ssl", "entry_hub_address", "entry_server_address",
+		"entry_local_address", "check_block_http", "check_hide_http",
+		"check_hide_pings"]
+
 	def __init__(self, app):
 		self.app = app
 
 	def create(self):
 		self.window = self.app.builder.get_object("dialog_prefs")
-		for i in ["combobox_mode", "entry_proxy_port", "entry_hub_port", "entry_gadu_port", "checkbutton_autostart", "checkbutton_simulation", "checkbutton_block_ssl", "entry_hub_address", "entry_server_address", "entry_local_address", "combobox_http_traffic"]:
+		for i in self.options:
 			setattr(self, i, self.app.builder.get_object(i))
 
 	def error(self, msg):
@@ -25,10 +31,12 @@ class Preferences:
 			proxy = False
 
 		self.entry_proxy_port.set_sensitive(proxy)
+		self.check_block_ssl.set_sensitive(proxy)
+		self.check_block_http.set_sensitive(proxy)
+		self.check_hide_http.set_sensitive(proxy)
 		self.entry_hub_port.set_sensitive(not proxy)
 		self.entry_gadu_port.set_sensitive(not proxy)
-		self.checkbutton_block_ssl.set_sensitive(proxy)
-		self.combobox_http_traffic.set_sensitive(proxy)
+		self.entry_hub_address.set_sensitive(not proxy)
 
 	def on_button_prefs_rules_clicked(self, widget):
 		print "on_button_prefs_rules_clicked"
@@ -69,8 +77,6 @@ class Preferences:
 		else:
 			proxy = False
 
-		http_traffic = self.combobox_http_traffic.get_active()
-
 		reconnect = False
 
 		if self.app.config.proxy != proxy:
@@ -84,13 +90,15 @@ class Preferences:
 		self.app.config.proxy_port = proxy_port
 		self.app.config.hub_port = hub_port
 		self.app.config.gadu_port = gadu_port
-		self.app.config.autostart = self.checkbutton_autostart.get_active()
-		self.app.config.simulation = self.checkbutton_simulation.get_active()
-		self.app.config.block_ssl = self.checkbutton_block_ssl.get_active()
+		self.app.config.autostart = self.check_autostart.get_active()
+		self.app.config.simulation = self.check_simulation.get_active()
+		self.app.config.block_ssl = self.check_block_ssl.get_active()
+		self.app.config.block_http = self.check_block_http.get_active()
+		self.app.config.hide_http = self.check_hide_http.get_active()
+		self.app.config.hide_pings = self.check_hide_pings.get_active()
 		self.app.config.hub_address = hub_address
 		self.app.config.server_address = server_address
 		self.app.config.local_address = local_address
-		self.app.config.http_traffic = http_traffic
 
 		self.app.config.write()
 
@@ -117,9 +125,12 @@ class Preferences:
 		self.entry_proxy_port.set_text(str(self.app.config.proxy_port))
 		self.entry_hub_port.set_text(str(self.app.config.hub_port))
 		self.entry_gadu_port.set_text(str(self.app.config.gadu_port))
-		self.checkbutton_autostart.set_active(self.app.config.autostart)
-		self.checkbutton_simulation.set_active(self.app.config.simulation)
-		self.checkbutton_block_ssl.set_active(self.app.config.block_ssl)
+		self.check_autostart.set_active(self.app.config.autostart)
+		self.check_simulation.set_active(self.app.config.simulation)
+		self.check_block_ssl.set_active(self.app.config.block_ssl)
+		self.check_block_http.set_active(self.app.config.block_http)
+		self.check_hide_http.set_active(self.app.config.hide_http)
+		self.check_hide_pings.set_active(self.app.config.hide_pings)
 		if self.app.config.hub_address != (None, 0):
 			self.entry_hub_address.set_text("%s:%d" % self.app.config.hub_address)
 		else:
@@ -134,8 +145,6 @@ class Preferences:
 			self.entry_local_address.set_text("%s:%d" % self.app.config.local_address)
 		else:
 			self.entry_local_address.set_text("")
-
-		self.combobox_http_traffic.set_active(self.app.config.http_traffic)
 
 		self.window.show()
 

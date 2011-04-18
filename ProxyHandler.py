@@ -14,11 +14,13 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 
 	def setup(self):
 		self.remote_address = self.request.getpeername()
-		self.conn = self.server.app.add_connection(self.remote_address)
+		self.conn = Connection(self.remote_address)
+		self.server.app.add_connection(self.conn)
 		# XXX log connection?
 
 	def finish(self):
-		self.server.app.finish_connection(self.conn)
+		self.conn.close()
+		self.server.app.update_connection(self.conn)
 		# XXX log disconnection?
 
 	def handle(self):
@@ -189,7 +191,7 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 				if not header.lower().startswith("Proxy"):
 					self.headers.append(header)
 
-			if self.server.app.config.http_traffic == 2 or self.server.app.config.http_traffic == 3:
+			if self.server.app.config.block_http:
 				if host != self.server.app.config.hub_address[0]:
 					self.forbidden()
 					return

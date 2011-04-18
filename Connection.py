@@ -1,54 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import time, struct
-
-def _hex_dump(data):
-	result = ""
-	offset = ""
-	hex = ""
-	chars = ""
-
-	for i in range(len(data)):
-		if i % 16 == 0:
-			offset = "%04x: " % i
-			hex = ""
-			chars = ""
-
-		hex = hex + "%02x" % ord(data[i])
-
-		if data[i] < ' ' or data[i] > '~':
-			chars = chars + "."
-		else:
-			chars = chars + data[i]
-
-		if i % 16 == 15:
-			result = result + offset + hex + "  " + chars + "\r\n"
-			offset = ""
-			hex = ""
-			chars = ""
-			
-		if i + 1 < len(data):
-			hex = hex + " "
-
-	if hex and chars and offset:
-		hex = hex + "   " * (16 - (len(data) % 16))
-
-		result = result + offset + hex + "  " + chars + "\r\n"
-
-	return result
+from Utils import *
+from PacketParser import *
 
 class Event:
-	def __init__(self, conn, type, details=None, orig_details=None):
+	def __init__(self, conn, type, details=None):
 		self.timestamp = time.time()
 		self.timestamp_str = "%.3f" % (self.timestamp - conn.open_timestamp)
-
 		self.details = details
-
-		if details != orig_details:
-			self.orig_details = orig_details
-		else:
-			self.orig_details = None
-
 		self.type = type
 
 		if type == Connection.PROXY_REQUEST:
@@ -68,32 +28,16 @@ class Event:
 			self.type_str = "HTTP reply"
 		elif type == Connection.GADU_CLIENT:
 			self.type_str = "Client packet"
-			if len(details) >= 4:
-				(type) = struct.unpack("<I", details[:4])
-				self.type_str = self.type_str + " 0x%02x" % type
-			self.details = _hex_dump(self.details).strip()
-			if self.orig_details:
-				self.orig_details = _hex_dump(self.orig_details).strip()
+			self.parse_packet(False)
 		elif type == Connection.GADU_SERVER:
 			self.type_str = "Server packet"
-			if len(details) >= 4:
-				(type) = struct.unpack("<I", details[:4])
-				self.type_str = self.type_str + " 0x%02x" % type
-			self.details = _hex_dump(self.details).strip()
-			if self.orig_details:
-				self.orig_details = _hex_dump(self.orig_details).strip()
+			self.parse_packet(True)
 		elif type == Connection.GADU_SIMULATED_CLIENT:
 			self.type_str = "Simulated client packet"
-			if len(details) >= 4:
-				(type) = struct.unpack("<I", details[:4])
-				self.type_str = self.type_str + " 0x%02x" % type
-			self.details = _hex_dump(self.details).strip()
+			self.parse_packet(False)
 		elif type == Connection.GADU_SIMULATED_SERVER:
-			self.type_str = "Simulated server packet"
-			if len(details) >= 4:
-				(type) = struct.unpack("<I", details[:4])
-				self.type_str = self.type_str + " 0x%02x" % type
-			self.details = _hex_dump(self.details).strip()
+			label = "Simulated server packet"
+			self.parse_packet(True)
 		elif type == Connection.GADU_STATE:
 			self.type_str = "Changed state to %s" % details
 			self.details = None
@@ -113,10 +57,18 @@ class Event:
 		else:
 			self.type_str = "Unknown event (%d)" % self.type
 
+	def parse_packet(self, from_server):
+		type_str = self.type_str
+
+		for i in range(len(self.details)):
+			parser = PacketParser(self.details[i], from_server)
+			name = parser.get_name()
+			if name:
+				self.type_str = type_str + " " + name
+			self.details[i] = parser.get_data()
+
 class Connection:
-	UNKNOWN = 0
-	GADU = 1
-	HTTP = 2
+	UNKNOWN, GADU, HTTP = range(3)
 
 	PROXY_REQUEST = 0
 	PROXY_REPLY = 1
@@ -149,8 +101,8 @@ class Connection:
 		self.iter = None
 		self.type = self.UNKNOWN
 
-	def append(self, type, details=None, orig_details=None):
-		event = Event(self, type, details, orig_details)
+	def append(self, type, details=None):
+		event = Event(self, type, details)
 		self.events.append(event)
 		return event
 

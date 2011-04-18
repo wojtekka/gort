@@ -19,22 +19,12 @@ class Config:
 	default_simulation = False
 	default_autostart = True
 	default_block_ssl = True
+	default_block_http = False
+	default_hide_http = False
+	default_hide_pings = False
 	default_gadu_port = 8074
 	default_proxy_port = 8080
 	default_hub_port = 80
-	default_http_traffic = 0
-	
-	hub_address = default_hub_address
-	local_address = default_local_address
-	server_address = default_server_address
-	proxy = default_proxy
-	simulation = default_simulation
-	autostart = default_autostart
-	block_ssl = default_block_ssl
-	gadu_port = default_gadu_port
-	proxy_port = default_proxy_port
-	hub_port = default_hub_port
-	http_traffic = default_http_traffic
 
 	http_request_rules = []
 	http_reply_rules = []
@@ -50,49 +40,19 @@ class Config:
 		parser = ExtendedConfigParser()
 		parser.read(path)
 		
-		tmp = parser.getint("general", "gadu_port")
-		if not tmp is None:
-			self.gadu_port = tmp
-
-		tmp = parser.getint("general", "proxy_port")
-		if not tmp is None:
-			self.proxy_port = tmp
-
-		tmp = parser.getint("general", "hub_port")
-		if not tmp is None:
-			self.hub_port = tmp
-
-		tmp = parser.getaddress("general", "hub_address", 80)
-		if not tmp is None:
-			self.hub_address = tmp
-
-		tmp = parser.getaddress("general", "local_address", self.gadu_port)
-		if not tmp is None:
-			self.local_address = tmp
-
-		tmp = parser.getaddress("general", "server_address", 8074)
-		if not tmp is None:
-			self.server_address = tmp
-
-		tmp = parser.getboolean("general", "proxy")
-		if not tmp is None:
-			self.proxy = tmp
-
-		tmp = parser.getboolean("general", "simulation")
-		if not tmp is None:
-			self.simulation = tmp
-
-		tmp = parser.getboolean("general", "autostart")
-		if not tmp is None:
-			self.autostart = tmp
-
-		tmp = parser.getboolean("general", "block_ssl")
-		if not tmp is None:
-			self.block_ssl = tmp
-
-		tmp = parser.getint("general", "http_traffic")
-		if not tmp is None:
-			self.http_traffic = tmp
+		self._read_int(parser, "gadu_port")
+		self._read_int(parser, "proxy_port")
+		self._read_int(parser, "hub_port")
+		self._read_address(parser, "hub_address", 80)
+		self._read_address(parser, "local_address", self.gadu_port)
+		self._read_address(parser, "server_address", 8074)
+		self._read_boolean(parser, "proxy")
+		self._read_boolean(parser, "simulation")
+		self._read_boolean(parser, "autostart")
+		self._read_boolean(parser, "block_ssl")
+		self._read_boolean(parser, "block_http")
+		self._read_boolean(parser, "hide_http")
+		self._read_boolean(parser, "hide_pings")
 
 		for section in parser.sections():
 			match = parser.get(section, "match")
@@ -158,51 +118,19 @@ class Config:
 		f = open(path, 'w+')
 
 		f.write("[general]\n")
-
-		if self.hub_address != self.default_hub_address:
-			f.write("hub_address=%s:%d\n" % self.hub_address)
-
-		if self.local_address != self.default_local_address:
-			f.write("local_address=%s:%d\n" % self.local_address)
-
-		if self.server_address != self.default_server_address:
-			f.write("server_address=%s:%d\n" % self.server_address)
-
-		if self.simulation != self.default_simulation:
-			if self.simulation:
-				f.write("simulation=true\n")
-			else:
-				f.write("simulation=false\n")
-
-		if self.proxy != self.default_proxy:
-			if self.proxy:
-				f.write("proxy=true\n")
-			else:
-				f.write("proxy=false\n")
-
-		if self.autostart != self.default_autostart:
-			if self.autostart:
-				f.write("autostart=true\n")
-			else:
-				f.write("autostart=false\n")
-
-		if self.block_ssl != self.default_block_ssl:
-			if self.block_ssl:
-				f.write("block_ssl=true\n")
-			else:
-				f.write("block_ssl=false\n")
-
-		if self.gadu_port != self.default_gadu_port:
-			f.write("gadu_port=%d\n" % (self.gadu_port))
-
-		if self.proxy_port != self.default_proxy_port:
-			f.write("proxy_port=%d\n" % (self.proxy_port))
-
-		if self.hub_port != self.default_hub_port:
-			f.write("hub_port=%d\n" % (self.hub_port))
-
-		if self.http_traffic != self.default_http_traffic:
-			f.write("http_traffic=%d\n" % (self.http_traffic))
+		self._write_address(f, "hub_address")
+		self._write_address(f, "local_address")
+		self._write_address(f, "server_address")
+		self._write_boolean(f, "simulation")
+		self._write_boolean(f, "proxy")
+		self._write_boolean(f, "autostart")
+		self._write_boolean(f, "block_ssl")
+		self._write_boolean(f, "block_http")
+		self._write_boolean(f, "hide_http")
+		self._write_boolean(f, "hide_pings")
+		self._write_int(f, "gadu_port")
+		self._write_int(f, "proxy_port")
+		self._write_int(f, "hub_port")
 
 		index = 1
 
@@ -234,6 +162,43 @@ class Config:
 				index = index + 1
 
 		f.close()
+
+	def _set(self, name, value):
+		if not value is None:
+			setattr(self, name, value)
+		else:
+			setattr(self, name, getattr(self, "default_" + name))
+
+	def _read_int(self, parser, name):
+		self._set(name, parser.getint("general", name))
+
+	def _read_address(self, parser, name, port):
+		self._set(name, parser.getaddress("general", name, port))
+
+	def _read_boolean(self, parser, name):
+		self._set(name, parser.getboolean("general", name))
+
+	def _write_boolean(self, f, name):
+		value = getattr(self, name)
+
+		if value != getattr(self, "default_" + name):
+			if value:
+				f.write("%s=true\n" % (name))
+			else:
+				f.write("%s=false\n" % (name))
+
+	def _write_int(self, f, name):
+		value = getattr(self, name)
+
+		if value != getattr(self, "default_" + name):
+			f.write("%s=%d\n" % (name, value))
+
+	def _write_address(self, f, name):
+		value = getattr(self, name)
+
+		if value != getattr(self, "default_" + name):
+			(addr, port) = value
+			f.write("%s=%s:%d\n" % (name, addr, port))
 
 	def get_server_address(self):
 		"""Returns server address. If address is not forced in

@@ -86,21 +86,18 @@ class Application:
 		self.stop_all_threads()
 		return True
 
-	def add_connection(self, source):
-		conn = Connection(source)
+	def add_connection(self, conn):
 		self.main_window.add_connection(conn)
-		return conn
 
 	def update_connection(self, conn):
 		self.main_window.update_connection(conn)
 
-	def log_connection(self, conn, type, details=None, orig_details=None):
-		event = conn.append(type, details, orig_details)
-		self.main_window.log_event(conn, event)
+	def remove_connection(self, conn):
+		self.main_window.remove_connection(conn)
 
-	def finish_connection(self, conn):
-		conn.close()
-		self.main_window.update_connection(conn)
+	def log_connection(self, conn, type, details=None):
+		event = conn.append(type, details)
+		self.main_window.log_event(conn, event)
 
 	def show_preferences(self):
 		self.preferences.show()

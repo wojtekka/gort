@@ -1,14 +1,10 @@
-#!/usr/bin/python
 # -*- coding: utf-8 -*-
-#
-# Gort v0.1
-# Wojtek Kaniewski <wojtekka@toxygen.net>
-# Public Domain
-#
+
 # Some code from http://code.activestate.com/recipes/66012/ by Jürgen Hermann
 
 import os, sys, socket, signal, string, re, time, select, struct, getopt, ssl, pprint
 
+import GaduPacket
 from SocketServer import BaseRequestHandler
 from threading import *
 from Config import *
@@ -97,7 +93,7 @@ class GaduHandler(BaseRequestHandler):
 			(new_packet, reply) = self.mangle_packet("", self.server.app.config.client_packet_rules)
 
 			if reply:
-				self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, reply)
+				self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, [reply])
 				client.send(reply)
 
 		else:
@@ -130,7 +126,7 @@ class GaduHandler(BaseRequestHandler):
 				if client_first:
 					tmp = client.recv(8, socket.MSG_PEEK)
 
-					self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, tmp)
+					self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, [tmp])
 
 					self.server.app.log_connection(self.conn, Connection.GADU_SSL, "Client talked first, he must be talking SSL")
 					client_first = False
@@ -177,13 +173,18 @@ class GaduHandler(BaseRequestHandler):
 
 						(packet, reply) = self.mangle_packet(packet, self.server.app.config.client_packet_rules)
 
-						self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, packet)
+						if (type != GaduPacket.PING and type != GaduPacket.PONG) or not self.server.app.config.hide_pings:
+							if orig_packet != packet:
+								details = [orig_packet, packet]
+							else:
+								details = [packet]
+							self.server.app.log_connection(self.conn, Connection.GADU_CLIENT, details)
 
 						if server and packet:
 							server.send(packet)
 
 						if reply:
-							self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, reply)
+							self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_SERVER, [reply])
 							client.send(reply)
 
 						client_data = client_data[length+8:]
@@ -224,13 +225,18 @@ class GaduHandler(BaseRequestHandler):
 
 						(packet, reply) = self.mangle_packet(packet, self.server.app.config.server_packet_rules)
 
-						self.server.app.log_connection(self.conn, Connection.GADU_SERVER, packet, orig_packet)
+						if orig_packet != packet:
+							details = [orig_packet, packet]
+						else:
+							details = [packet]
+
+						self.server.app.log_connection(self.conn, Connection.GADU_SERVER, details)
 
 						if packet:
 							client.send(packet)
 
 						if reply:
-							self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_CLIENT, reply)
+							self.server.app.log_connection(self.conn, Connection.GADU_SIMULATED_CLIENT, [reply])
 							server.send(reply)
 
 						server_data = server_data[length+8:]
