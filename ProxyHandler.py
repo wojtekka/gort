@@ -112,7 +112,7 @@ class ProxyHandler(BaseRequestHandler, HubHandler, GaduHandler):
 
 			self.address = (server[0], port)
 
-			if port == 8074:
+			if port == 8074 or port == 8063:
 				self.client = None
 				GaduHandler.handle(self)
 

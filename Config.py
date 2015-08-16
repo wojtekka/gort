@@ -92,10 +92,10 @@ class Config:
 
 			rule = Rule(match, replace, replies, state, new_state)
 
-			if section[:15] == "http_request::":
+			if section[:14] == "http_request::":
 				self.http_request_rules.append(rule)
 
-			if section[:13] == "http_reply::":
+			if section[:12] == "http_reply::":
 				self.http_reply_rules.append(rule)
 
 			if section[:15] == "client_packet::":

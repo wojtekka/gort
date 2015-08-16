@@ -503,7 +503,7 @@ class PacketParser:
 		if data:
 			(self.name, self.parsers) = data
 		else:
-			(self.name, self.parsers) = None
+			(self.name, self.parsers) = (None, None)
 
 	def get_name(self):
 		res = "0x%02x" % (self.id)
